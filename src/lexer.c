@@ -38,7 +38,7 @@ B32 AnanasLexerNext(AnanasLexer *lexer, AnanasToken *token) {
     switch (cur_char) {
     case '(': {
         token->type = AnanasTokenType_LeftParen;
-        token->value.data = lexer->contents->data + lexer->contents->byte_offset - 1;
+        token->value.data = lexer->contents->data + lexer->contents->byte_offset;
         token->value.count = 1;
         token->col = lexer->col;
         token->row = lexer->row;
@@ -46,7 +46,7 @@ B32 AnanasLexerNext(AnanasLexer *lexer, AnanasToken *token) {
     }
     case ')': {
         token->type = AnanasTokenType_RightParen;
-        token->value.data = lexer->contents->data + lexer->contents->byte_offset - 1;
+        token->value.data = lexer->contents->data + lexer->contents->byte_offset;
         token->value.count = 1;
         token->col = lexer->col;
         token->row = lexer->row;
@@ -57,7 +57,7 @@ B32 AnanasLexerNext(AnanasLexer *lexer, AnanasToken *token) {
         token->col = lexer->col;
 
         AnanasTokenType token_type = AnanasTokenType_String;
-        UZ string_start = lexer->contents->byte_offset;
+        UZ string_start = lexer->contents->byte_offset + 1;
 
         do {
             if (!HeliosString8StreamNext(lexer->contents, &cur_char)) {
@@ -73,13 +73,11 @@ B32 AnanasLexerNext(AnanasLexer *lexer, AnanasToken *token) {
             }
         } while (cur_char != '"');
 
-        UZ string_end = lexer->contents->byte_offset - 1 - lexer->contents->last_char_size;
+        UZ string_end = lexer->contents->byte_offset;
 
         token->type = token_type;
         token->value.data = lexer->contents->data + string_start;
         token->value.count = string_end - string_start;
-
-        HeliosString8StreamRetreat(lexer->contents);
 
         return 1;
     }

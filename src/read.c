@@ -1,6 +1,9 @@
 #include "read.h"
 
 static const char *token_type_str_table[] = {
+#define X(t) #t,
+    ANANAS_ENUM_TOKEN_TYPES
+#undef X
 };
 
 B32 AnanasReaderNext(AnanasLexer *lexer, AnanasArena *arena, AnanasASTNode *node, AnanasErrorContext *error_ctx) {

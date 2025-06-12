@@ -3,15 +3,20 @@
 
 #include "astron.h"
 
+#define ANANAS_ENUM_TOKEN_TYPES \
+    X(LeftParen) \
+    X(RightParen) \
+    X(Int) \
+    X(String) \
+    X(UnclosedString) \
+    X(Illegal) \
+    X(Symbol) \
+    X(ReaderMacro)
+
 typedef enum {
-    AnanasTokenType_LeftParen,
-    AnanasTokenType_RightParen,
-    AnanasTokenType_Int,
-    AnanasTokenType_String,
-    AnanasTokenType_UnclosedString,
-    AnanasTokenType_Illegal,
-    AnanasTokenType_Symbol,
-    AnanasTokenType_ReaderMacro,
+#define X(t) AnanasTokenType_##t,
+ANANAS_ENUM_TOKEN_TYPES
+#undef X
 } AnanasTokenType;
 
 typedef struct {
