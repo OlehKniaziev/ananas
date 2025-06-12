@@ -32,6 +32,17 @@ void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator alloca
     env->parent_env = parent_env;
 }
 
+static B32 AnanasConvertToBool(AnanasASTNode node) {
+    switch (node.type) {
+    case AnanasASTNodeType_Int: return node.u.integer;
+
+    case AnanasASTNodeType_Symbol:
+    case AnanasASTNodeType_List:
+    case AnanasASTNodeType_String:
+    case AnanasASTNodeType_Function: return 1;
+    }
+}
+
 B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasASTNode *result, AnanasErrorContext *error_ctx) {
     switch (node.type) {
     case AnanasASTNodeType_Function:
@@ -200,6 +211,45 @@ B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasAST
             result->type = AnanasASTNodeType_Function;
             result->u.function = lambda;
 
+            return 1;
+        } else if (HeliosStringViewEqualCStr(sym_name, "or")) {
+            AnanasList *args_list = list->cdr;
+
+            AnanasASTNode truthy_node = {.type = AnanasASTNodeType_Int, .u = {.integer = 0}};
+
+            while (args_list != NULL) {
+                AnanasASTNode car;
+                if (!AnanasEval(args_list->car, arena, env, &car, error_ctx)) return 0;
+
+                if (AnanasConvertToBool(car)) {
+                    truthy_node = car;
+                    break;
+                }
+
+                args_list = args_list->cdr;
+            }
+
+            *result = truthy_node;
+            return 1;
+        } else if (HeliosStringViewEqualCStr(sym_name, "and")) {
+            AnanasList *args_list = list->cdr;
+
+            AnanasASTNode falsy_node = {.type = AnanasASTNodeType_Int, .u = {.integer = 0}};
+
+            while (args_list != NULL) {
+                AnanasASTNode car;
+                if (!AnanasEval(args_list->car, arena, env, &car, error_ctx)) return 0;
+
+                falsy_node = car;
+
+                if (!AnanasConvertToBool(car)) {
+                    break;
+                }
+
+                args_list = args_list->cdr;
+            }
+
+            *result = falsy_node;
             return 1;
         } else {
             AnanasErrorContextMessage(error_ctx,
