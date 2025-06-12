@@ -21,6 +21,7 @@ typedef struct AnanasFunction AnanasFunction;
 
 typedef struct {
     AnanasASTNodeType type;
+    AnanasToken token;
     union {
         HeliosStringView string;
         S64 integer;
@@ -44,6 +45,6 @@ struct AnanasFunction {
     struct AnanasEnv *enclosing_env;
 };
 
-B32 AnanasReaderNext(HeliosString8Stream *stream, AnanasArena *arena, AnanasASTNode *node);
+B32 AnanasReaderNext(AnanasLexer *lexer, AnanasArena *arena, AnanasASTNode *node, AnanasErrorContext *error_ctx);
 
 #endif // ANANAS_READER_H_

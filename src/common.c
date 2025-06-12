@@ -1,6 +1,8 @@
 #include "common.h"
 #include "astron.h"
 
+#include <stdarg.h>
+
 #define PAGE_SIZE 4096
 
 void AnanasArenaInit(AnanasArena *arena, UZ cap) {
@@ -42,4 +44,23 @@ HeliosAllocator AnanasArenaToHeliosAllocator(AnanasArena *arena) {
             .realloc = NULL,
         },
     };
+}
+
+void AnanasErrorContextMessage(AnanasErrorContext *ctx, U32 row, U32 col, const char *fmt, ...) {
+    ctx->ok = 0;
+
+    UZ fmt_buffer_count = strlen(fmt) + ctx->place.count + 50;
+    U8 *fmt_buffer = HeliosAlloc(helios_temp_allocator, fmt_buffer_count + 1);
+    snprintf((char *)fmt_buffer,
+             fmt_buffer_count,
+             HELIOS_SV_FMT ":%u:%u: %s",
+             HELIOS_SV_ARG(ctx->place),
+             row,
+             col,
+             fmt);
+
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf((char *)ctx->error_buffer.data, ctx->error_buffer.count, (const char *)fmt_buffer, args);
+    va_end(args);
 }

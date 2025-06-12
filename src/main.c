@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include "interpreter.h"
+#include "eval.h"
 #include "common.h"
 
 int main() {
@@ -13,6 +13,10 @@ int main() {
     AnanasEnvInit(&env, NULL, arena_allocator);
 
     while (1) {
+        U8 backing_error_buffer[1024];
+        HeliosStringView error_buffer = {.data = backing_error_buffer, .count = sizeof(backing_error_buffer)};
+        AnanasErrorContext error_ctx = {.ok = 1, .place = HELIOS_SV_LIT("repl"), .error_buffer = error_buffer};
+
         printf("> ");
 
         char *line = NULL;
@@ -27,15 +31,18 @@ int main() {
         HeliosString8Stream source;
         HeliosString8StreamInit(&source, (U8 *)line, res);
 
+        AnanasLexer lexer;
+        AnanasLexerInit(&lexer, &source);
+
         AnanasASTNode node;
-        if (!AnanasReaderNext(&source, &arena, &node)) {
-            printf("Reader error\n");
+        if (!AnanasReaderNext(&lexer, &arena, &node, &error_ctx)) {
+            printf("Reader error: " HELIOS_SV_FMT "\n", HELIOS_SV_ARG(error_ctx.error_buffer));
             continue;
         }
 
         AnanasASTNode result;
-        if (!AnanasEval(node, &arena, &env, &result)) {
-            printf("Eval error\n");
+        if (!AnanasEval(node, &arena, &env, &result, &error_ctx)) {
+            printf("Eval error: " HELIOS_SV_FMT "\n", HELIOS_SV_ARG(error_ctx.error_buffer));
             continue;
         }
 

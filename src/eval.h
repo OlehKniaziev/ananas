@@ -2,7 +2,7 @@
 #define ANANAS_INTERPRETER_H_
 
 #include "astron.h"
-#include "reader.h"
+#include "read.h"
 
 ERMIS_DECL_HASHMAP(HeliosStringView, AnanasASTNode, AnanasEnvMap)
 
@@ -13,7 +13,7 @@ typedef struct AnanasEnv {
 
 void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator allocator);
 
-B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasASTNode *result);
+B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasASTNode *result, AnanasErrorContext *error_ctx);
 HeliosStringView AnanasPrint(HeliosAllocator allocator, AnanasASTNode value);
 
 #endif // ANANAS_INTERPRETER_H_

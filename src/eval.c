@@ -1,4 +1,4 @@
-#include "interpreter.h"
+#include "eval.h"
 
 static U64 Fnv1Hash(HeliosStringView sv) {
     const U64 fnv_offset_basis = 0xCBF29CE484222325;
@@ -32,7 +32,7 @@ void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator alloca
     env->parent_env = parent_env;
 }
 
-B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasASTNode *result) {
+B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasASTNode *result, AnanasErrorContext *error_ctx) {
     switch (node.type) {
     case AnanasASTNodeType_Function:
     case AnanasASTNodeType_String:
@@ -42,7 +42,11 @@ B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasAST
     }
     case AnanasASTNodeType_Symbol: {
         if (!AnanasEnvLookup(env, node.u.symbol, result)) {
-            printf("Failed to lookup " HELIOS_SV_FMT "\n", HELIOS_SV_ARG(node.u.symbol));
+            AnanasErrorContextMessage(error_ctx,
+                                      node.token.row,
+                                      node.token.col,
+                                      "Failed to lookup " HELIOS_SV_FMT "",
+                                      HELIOS_SV_ARG(node.u.symbol));
             return 0;
         }
 
@@ -51,16 +55,22 @@ B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasAST
     case AnanasASTNodeType_List: {
         AnanasList *list = node.u.list;
         if (list == NULL) {
-            printf("Empty list\n");
+            AnanasErrorContextMessage(error_ctx,
+                                      node.token.row,
+                                      node.token.col,
+                                      "Cannot evaluate a nil list");
             return 0;
         }
 
         if (list->car.type != AnanasASTNodeType_Symbol) {
             AnanasASTNode function_node;
-            if (!AnanasEval(list->car, arena, env, &function_node)) return 0;
+            if (!AnanasEval(list->car, arena, env, &function_node, error_ctx)) return 0;
 
             if (function_node.type != AnanasASTNodeType_Function) {
-                printf("List's car does not evaluate to a function\n");
+                AnanasErrorContextMessage(error_ctx,
+                                          node.token.row,
+                                          node.token.col,
+                                          "List's car does not evaluate to a function");
                 return 0;
             }
 
@@ -77,12 +87,17 @@ B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasAST
 
             while (args_list != NULL) {
                 if (arguments_count >= function->params_count) {
-                    printf("Too many arguments: expected %zu, got %zu\n", function->params_count, arguments_count);
+                    AnanasErrorContextMessage(error_ctx,
+                                              node.token.row,
+                                              node.token.col,
+                                              "Too many arguments: expected %zu, got %zu",
+                                              function->params_count,
+                                              arguments_count);
                     return 0;
                 }
 
                 AnanasASTNode param_value;
-                if (!AnanasEval(args_list->car, arena, env, &param_value)) return 0;
+                if (!AnanasEval(args_list->car, arena, env, &param_value, error_ctx)) return 0;
 
                 HeliosStringView param_name = function->params_names[arguments_count];
                 AnanasEnvMapInsert(&call_env.map, param_name, param_value);
@@ -92,23 +107,28 @@ B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasAST
             }
 
             if (arguments_count != function->params_count) {
-                printf("Not enough arguments: expected %zu, got %zu\n", function->params_count, arguments_count);
+                AnanasErrorContextMessage(error_ctx,
+                                          node.token.row,
+                                          node.token.col,
+                                          "Not enough arguments: expected %zu, got %zu",
+                                          function->params_count,
+                                          arguments_count);
                 return 0;
             }
 
-            return AnanasEval(function->body, arena, &call_env, result);
+            return AnanasEval(function->body, arena, &call_env, result, error_ctx);
         }
 
         HeliosStringView sym_name = list->car.u.symbol;
         if (HeliosStringViewEqualCStr(sym_name, "var")) {
             AnanasList *var_name_cons = list->cdr;
             if (var_name_cons == NULL) {
-                printf("'var' should have a variable name\n");
+                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "'var' should have a variable name");
                 return 0;
             }
 
             if (var_name_cons->car.type != AnanasASTNodeType_Symbol) {
-                printf("'var' name should be a symbol\n");
+                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "'var' name should be a symbol");
                 return 0;
             }
 
@@ -116,13 +136,13 @@ B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasAST
 
             AnanasList *var_value_cons = var_name_cons->cdr;
             if (var_value_cons == NULL) {
-                printf("'var' should have a variable value\n");
+                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "'var' should have a variable value");
                 return 0;
             }
 
             AnanasASTNode var_value;
-            if (!AnanasEval(var_value_cons->car, arena, env, &var_value)) {
-                printf("'var' value eval error\n");
+            if (!AnanasEval(var_value_cons->car, arena, env, &var_value, error_ctx)) {
+                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "'var' value eval error");
                 return 0;
             }
 
@@ -132,12 +152,12 @@ B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasAST
         } else if (HeliosStringViewEqualCStr(sym_name, "lambda")) {
             AnanasList *lambda_params_cons = list->cdr;
             if (lambda_params_cons == NULL) {
-                printf("'lambda' should have an arg list\n");
+                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "'lambda' should have an arg list");
                 return 0;
             }
 
             if (lambda_params_cons->car.type != AnanasASTNodeType_List) {
-                printf("'lambda' params should be a list\n");
+                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "'lambda' params should be a list");
                 return 0;
             }
 
@@ -145,12 +165,12 @@ B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasAST
 
             AnanasList *lambda_body_cons = lambda_params_cons->cdr;
             if (lambda_body_cons == NULL) {
-                printf("'lambda' should have a body\n");
+                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "'lambda' should have a body");
                 return 0;
             }
 
             if (lambda_body_cons->cdr != NULL) {
-                printf("'lambda' body should have only one form\n");
+                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "'lambda' body should have only one form");
                 return 0;
             }
 
@@ -160,7 +180,7 @@ B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasAST
             HeliosStringView *lambda_params = AnanasArenaPush(arena, sizeof(HeliosStringView));
             while (lambda_params_list != NULL) {
                 if (lambda_params_list->car.type != AnanasASTNodeType_Symbol) {
-                    printf("'lambda' argument %zu is not a symbol\n", lambda_params_count);
+                    AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "'lambda' argument %zu is not a symbol", lambda_params_count);
                     return 0;
                 }
 
@@ -182,7 +202,12 @@ B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasAST
 
             return 1;
         } else {
-            HELIOS_PANIC_FMT("Unknown sform or function '" HELIOS_SV_FMT "'\n", HELIOS_SV_ARG(sym_name));
+            AnanasErrorContextMessage(error_ctx,
+                                      node.token.row,
+                                      node.token.col,
+                                      "Unbound symbol '" HELIOS_SV_FMT "'",
+                                      HELIOS_SV_ARG(sym_name));
+            return 0;
         }
     }
     }

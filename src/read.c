@@ -1,41 +1,56 @@
-#include "reader.h"
+#include "read.h"
 
-B32 AnanasReaderNext(HeliosString8Stream *stream, AnanasArena *arena, AnanasASTNode *node) {
+static const char *token_type_str_table[] = {
+};
+
+B32 AnanasReaderNext(AnanasLexer *lexer, AnanasArena *arena, AnanasASTNode *node, AnanasErrorContext *error_ctx) {
     AnanasToken token;
-    if (!AnanasLexerNext(stream, &token)) return 0;
+    if (!AnanasLexerNext(lexer, &token)) return 0;
 
     switch (token.type) {
     case AnanasTokenType_Int: {
         HELIOS_ASSERT(HeliosParseS64DetectBase(token.value, &node->u.integer));
         node->type = AnanasASTNodeType_Int;
+        node->token = token;
         return 1;
     }
     case AnanasTokenType_String: {
         node->type = AnanasASTNodeType_String;
         node->u.string = token.value;
+        node->token = token;
         return 1;
     }
     case AnanasTokenType_Symbol: {
         node->type = AnanasASTNodeType_Symbol;
         node->u.symbol = token.value;
+        node->token = token;
         return 1;
     }
     case AnanasTokenType_LeftParen: {
         AnanasList *result_list = NULL;
         AnanasList *list = result_list;
+        node->token = token;
 
         while (1) {
-            HeliosString8Stream prev_stream = *stream;
-            if (!AnanasLexerNext(stream, &token)) HELIOS_PANIC("EOF");
+            AnanasLexer prev_lexer = *lexer;
+            HeliosString8Stream prev_contents = *lexer->contents;
+            if (!AnanasLexerNext(lexer, &token)) {
+                AnanasErrorContextMessage(error_ctx, token.row, token.col + token.value.count, "EOF while expecting ')'");
+                return 0;
+            }
 
             if (token.type == AnanasTokenType_RightParen) {
                 break;
             }
 
-            *stream = prev_stream;
+            *lexer = prev_lexer;
+            *lexer->contents = prev_contents;
 
             AnanasList *list_car = ANANAS_ARENA_PUSH_ZERO(arena, sizeof(AnanasList));
-            if (!AnanasReaderNext(stream, arena, &list_car->car)) HELIOS_PANIC("LIST ELEM EOF");
+            if (!AnanasReaderNext(lexer, arena, &list_car->car, error_ctx)) {
+                HELIOS_ASSERT(!error_ctx->ok);
+                return 0;
+            }
 
             if (result_list == NULL) {
                 result_list = list_car;
@@ -51,6 +66,10 @@ B32 AnanasReaderNext(HeliosString8Stream *stream, AnanasArena *arena, AnanasASTN
 
         return 1;
     }
-    default: HELIOS_PANIC("Bad token");
+    default: {
+        const char *token_type_str = token_type_str_table[token.type];
+        AnanasErrorContextMessage(error_ctx, token.row, token.col, "unexpected token '%s'", token_type_str);
+        return 0;
+    }
     }
 }

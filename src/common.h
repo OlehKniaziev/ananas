@@ -2,6 +2,21 @@
 #define ANANAS_COMMON_H_
 
 #include "astron.h"
+#include "lexer.h"
+
+typedef struct {
+    HeliosStringView place;
+    U32 row;
+    U32 col;
+} AnanasLocation;
+
+typedef struct {
+    B32 ok;
+    HeliosStringView place;
+    HeliosStringView error_buffer;
+} AnanasErrorContext;
+
+void AnanasErrorContextMessage(AnanasErrorContext *ctx, U32 row, U32 col, const char *fmt, ...) __attribute__((format(printf, 4, 5)));
 
 typedef struct {
     U8 *data;
