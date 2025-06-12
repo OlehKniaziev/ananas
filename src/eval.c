@@ -43,6 +43,54 @@ static B32 AnanasConvertToBool(AnanasASTNode node) {
     }
 }
 
+static B32 AnanasEvalFunctionWithArgumentList(AnanasFunction *function,
+                                              AnanasList *args_list,
+                                              AnanasToken where,
+                                              AnanasArena *arena,
+                                              AnanasEnv *env,
+                                              AnanasErrorContext *error_ctx,
+                                              AnanasASTNode *result) {
+    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
+
+    AnanasEnv call_env;
+    AnanasEnvInit(&call_env, env, arena_allocator);
+
+    UZ arguments_count = 0;
+
+    while (args_list != NULL) {
+        if (arguments_count >= function->params_count) {
+            AnanasErrorContextMessage(error_ctx,
+                                      where.row,
+                                      where.col,
+                                      "Too many arguments: expected %zu, got %zu",
+                                      function->params_count,
+                                      arguments_count);
+            return 0;
+        }
+
+        AnanasASTNode param_value;
+        if (!AnanasEval(args_list->car, arena, env, &param_value, error_ctx)) return 0;
+
+        HeliosStringView param_name = function->params_names[arguments_count];
+        AnanasEnvMapInsert(&call_env.map, param_name, param_value);
+
+        arguments_count++;
+        args_list = args_list->cdr;
+    }
+
+    if (arguments_count != function->params_count) {
+        AnanasErrorContextMessage(error_ctx,
+                                  where.row,
+                                  where.col,
+                                  "Not enough arguments: expected %zu, got %zu",
+                                  function->params_count,
+                                  arguments_count);
+        return 0;
+    }
+
+    return AnanasEval(function->body, arena, &call_env, result, error_ctx);
+}
+
 B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasASTNode *result, AnanasErrorContext *error_ctx) {
     switch (node.type) {
     case AnanasASTNodeType_Function:
@@ -56,7 +104,7 @@ B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasAST
             AnanasErrorContextMessage(error_ctx,
                                       node.token.row,
                                       node.token.col,
-                                      "Failed to lookup " HELIOS_SV_FMT "",
+                                      "Unbound symbol '" HELIOS_SV_FMT "'",
                                       HELIOS_SV_ARG(node.u.symbol));
             return 0;
         }
@@ -87,47 +135,13 @@ B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasAST
 
             AnanasFunction *function = function_node.u.function;
 
-            HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
-
-            AnanasEnv call_env;
-            AnanasEnvInit(&call_env, env, arena_allocator);
-
-            UZ arguments_count = 0;
-
-            AnanasList *args_list = list->cdr;
-
-            while (args_list != NULL) {
-                if (arguments_count >= function->params_count) {
-                    AnanasErrorContextMessage(error_ctx,
-                                              node.token.row,
-                                              node.token.col,
-                                              "Too many arguments: expected %zu, got %zu",
-                                              function->params_count,
-                                              arguments_count);
-                    return 0;
-                }
-
-                AnanasASTNode param_value;
-                if (!AnanasEval(args_list->car, arena, env, &param_value, error_ctx)) return 0;
-
-                HeliosStringView param_name = function->params_names[arguments_count];
-                AnanasEnvMapInsert(&call_env.map, param_name, param_value);
-
-                arguments_count++;
-                args_list = args_list->cdr;
-            }
-
-            if (arguments_count != function->params_count) {
-                AnanasErrorContextMessage(error_ctx,
-                                          node.token.row,
-                                          node.token.col,
-                                          "Not enough arguments: expected %zu, got %zu",
-                                          function->params_count,
-                                          arguments_count);
-                return 0;
-            }
-
-            return AnanasEval(function->body, arena, &call_env, result, error_ctx);
+            return AnanasEvalFunctionWithArgumentList(function,
+                                                      list->cdr,
+                                                      node.token,
+                                                      arena,
+                                                      env,
+                                                      error_ctx,
+                                                      result);
         }
 
         HeliosStringView sym_name = list->car.u.symbol;
@@ -158,6 +172,8 @@ B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasAST
             }
 
             AnanasEnvMapInsert(&env->map, var_name, var_value);
+
+            *result = var_value;
 
             return 1;
         } else if (HeliosStringViewEqualCStr(sym_name, "lambda")) {
@@ -252,12 +268,26 @@ B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasAST
             *result = falsy_node;
             return 1;
         } else {
-            AnanasErrorContextMessage(error_ctx,
-                                      node.token.row,
-                                      node.token.col,
-                                      "Unbound symbol '" HELIOS_SV_FMT "'",
-                                      HELIOS_SV_ARG(sym_name));
-            return 0;
+            AnanasASTNode fn_node;
+            if (!AnanasEnvLookup(env, sym_name, &fn_node)) {
+                AnanasToken token = list->car.token;
+                AnanasErrorContextMessage(error_ctx,
+                                          token.row,
+                                          token.col,
+                                          "Unbound symbol '" HELIOS_SV_FMT "'",
+                                          HELIOS_SV_ARG(sym_name));
+                return 0;
+            }
+
+            AnanasFunction *function = node.u.function;
+
+            return AnanasEvalFunctionWithArgumentList(function,
+                                                      list->cdr,
+                                                      node.token,
+                                                      arena,
+                                                      env,
+                                                      error_ctx,
+                                                      result);
         }
     }
     }
