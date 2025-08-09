@@ -11,6 +11,7 @@ typedef enum {
     AnanasASTNodeType_Symbol,
     AnanasASTNodeType_List,
     AnanasASTNodeType_Function,
+    AnanasASTNodeType_Macro,
 } AnanasASTNodeType;
 
 struct AnanasList;
@@ -18,6 +19,9 @@ typedef struct AnanasList AnanasList;
 
 struct AnanasFunction;
 typedef struct AnanasFunction AnanasFunction;
+
+struct AnanasMacro;
+typedef struct AnanasMacro AnanasMacro;
 
 typedef struct {
     AnanasASTNodeType type;
@@ -28,6 +32,7 @@ typedef struct {
         HeliosStringView symbol;
         AnanasList *list;
         AnanasFunction *function;
+        AnanasMacro *macro;
     } u;
 } AnanasASTNode;
 
@@ -38,10 +43,20 @@ struct AnanasList {
 
 struct AnanasEnv;
 
+typedef struct {
+    HeliosStringView *names;
+    UZ count;
+} AnanasParams;
+
 struct AnanasFunction {
-    HeliosStringView *params_names;
-    UZ params_count;
-    AnanasASTNode body;
+    AnanasParams params;
+    AnanasList *body;
+    struct AnanasEnv *enclosing_env;
+};
+
+struct AnanasMacro {
+    AnanasParams params;
+    AnanasList *body;
     struct AnanasEnv *enclosing_env;
 };
 

@@ -39,8 +39,25 @@ static B32 AnanasConvertToBool(AnanasASTNode node) {
     case AnanasASTNodeType_Symbol:
     case AnanasASTNodeType_List:
     case AnanasASTNodeType_String:
-    case AnanasASTNodeType_Function: return 1;
+    case AnanasASTNodeType_Function:
+    case AnanasASTNodeType_Macro:
+        return 1;
     }
+}
+
+static B32 AnanasEvalFormList(AnanasList *form_list,
+                              AnanasArena *arena,
+                              AnanasEnv *env,
+                              AnanasErrorContext *error_ctx,
+                              AnanasASTNode *result) {
+    HELIOS_VERIFY(form_list != NULL);
+
+    while (form_list != NULL) {
+        if (!AnanasEval(form_list->car, arena, env, result, error_ctx)) return 0;
+        form_list = form_list->cdr;
+    }
+
+    return 1;
 }
 
 static B32 AnanasEvalFunctionWithArgumentList(AnanasFunction *function,
@@ -53,17 +70,17 @@ static B32 AnanasEvalFunctionWithArgumentList(AnanasFunction *function,
     HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
 
     AnanasEnv call_env;
-    AnanasEnvInit(&call_env, env, arena_allocator);
+    AnanasEnvInit(&call_env, function->enclosing_env, arena_allocator);
 
     UZ arguments_count = 0;
 
     while (args_list != NULL) {
-        if (arguments_count >= function->params_count) {
+        if (arguments_count >= function->params.count) {
             AnanasErrorContextMessage(error_ctx,
                                       where.row,
                                       where.col,
                                       "Too many arguments: expected %zu, got %zu",
-                                      function->params_count,
+                                      function->params.count,
                                       arguments_count);
             return 0;
         }
@@ -71,28 +88,112 @@ static B32 AnanasEvalFunctionWithArgumentList(AnanasFunction *function,
         AnanasASTNode param_value;
         if (!AnanasEval(args_list->car, arena, env, &param_value, error_ctx)) return 0;
 
-        HeliosStringView param_name = function->params_names[arguments_count];
+        HeliosStringView param_name = function->params.names[arguments_count];
         AnanasEnvMapInsert(&call_env.map, param_name, param_value);
 
         arguments_count++;
         args_list = args_list->cdr;
     }
 
-    if (arguments_count != function->params_count) {
+    if (arguments_count != function->params.count) {
         AnanasErrorContextMessage(error_ctx,
                                   where.row,
                                   where.col,
                                   "Not enough arguments: expected %zu, got %zu",
-                                  function->params_count,
+                                  function->params.count,
                                   arguments_count);
         return 0;
     }
 
-    return AnanasEval(function->body, arena, &call_env, result, error_ctx);
+    AnanasList *function_body = function->body;
+    return AnanasEvalFormList(function_body,
+                              arena,
+                              &call_env,
+                              error_ctx,
+                              result);
+}
+
+static B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
+                                           AnanasToken where,
+                                           AnanasList *args_list,
+                                           AnanasArena *arena,
+                                           AnanasErrorContext *error_ctx,
+                                           AnanasASTNode *result) {
+    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
+
+    AnanasEnv call_env;
+    AnanasEnvInit(&call_env, macro->enclosing_env, arena_allocator);
+
+    UZ args_count = 0;
+    while (args_list != NULL) {
+        if (args_count >= macro->params.count) {
+            AnanasErrorContextMessage(error_ctx,
+                                      where.row,
+                                      where.col,
+                                      "Too many arguments for macro call: expected '%zu', got %zu instead",
+                                      args_count,
+                                      macro->params.count);
+            return 0;
+        }
+
+        HeliosStringView param_name = macro->params.names[args_count];
+        AnanasEnvMapInsert(&call_env.map, param_name, args_list->car);
+
+        ++args_count;
+        args_list = args_list->cdr;
+    }
+
+    if (args_count != macro->params.count) {
+        AnanasErrorContextMessage(error_ctx,
+                                  where.row,
+                                  where.col,
+                                  "Not enough arguments for macro call: expected '%zu', got %zu instead",
+                                  macro->params.count,
+                                  args_count);
+        return 0;
+    }
+
+    return AnanasEvalFormList(macro->body,
+                              arena,
+                              &call_env,
+                              error_ctx,
+                              result);
+}
+
+ERMIS_DECL_ARRAY(HeliosStringView, AnanasParamsArray)
+ERMIS_IMPL_ARRAY(HeliosStringView, AnanasParamsArray)
+
+static B32 AnanasParseParamsFromList(AnanasArena *arena,
+                                     AnanasList *params_list,
+                                     AnanasParams *out_params,
+                                     AnanasErrorContext *error_ctx) {
+    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
+
+    AnanasParamsArray params_array;
+    AnanasParamsArrayInit(&params_array, arena_allocator, 16);
+
+    while (params_list != NULL) {
+        AnanasASTNode param_node = params_list->car;
+        if (param_node.type != AnanasASTNodeType_Symbol) {
+            AnanasErrorContextMessage(error_ctx, param_node.token.row, param_node.token.col, "expected a symbol as a parameter name");
+            return 0;
+        }
+
+        HeliosStringView param = param_node.u.string;
+        AnanasParamsArrayPush(&params_array, param);
+
+        params_list = params_list->cdr;
+    }
+
+    out_params->names = params_array.items;
+    out_params->count = params_array.count;
+
+    return 1;
 }
 
 B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasASTNode *result, AnanasErrorContext *error_ctx) {
     switch (node.type) {
+    case AnanasASTNodeType_Macro:
     case AnanasASTNodeType_Function:
     case AnanasASTNodeType_String:
     case AnanasASTNodeType_Int: {
@@ -190,37 +291,17 @@ B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasAST
 
             AnanasList *lambda_params_list = lambda_params_cons->car.u.list;
 
-            AnanasList *lambda_body_cons = lambda_params_cons->cdr;
-            if (lambda_body_cons == NULL) {
+            AnanasList *lambda_body = lambda_params_cons->cdr;
+            if (lambda_body == NULL) {
                 AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "'lambda' should have a body");
                 return 0;
             }
 
-            if (lambda_body_cons->cdr != NULL) {
-                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "'lambda' body should have only one form");
-                return 0;
-            }
-
-            AnanasASTNode lambda_body = lambda_body_cons->car;
-
-            UZ lambda_params_count = 0;
-            HeliosStringView *lambda_params = AnanasArenaPush(arena, sizeof(HeliosStringView));
-            while (lambda_params_list != NULL) {
-                if (lambda_params_list->car.type != AnanasASTNodeType_Symbol) {
-                    AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "'lambda' argument %zu is not a symbol", lambda_params_count);
-                    return 0;
-                }
-
-                lambda_params[lambda_params_count] = lambda_params_list->car.u.symbol;
-                lambda_params_count++;
-                AnanasArenaPush(arena, sizeof(HeliosStringView));
-
-                lambda_params_list = lambda_params_list->cdr;
-            }
+            AnanasParams lambda_params;
+            if (!AnanasParseParamsFromList(arena, lambda_params_list, &lambda_params, error_ctx)) return 0;
 
             AnanasFunction *lambda = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasFunction);
-            lambda->params_names = lambda_params;
-            lambda->params_count = lambda_params_count;
+            lambda->params = lambda_params;
             lambda->body = lambda_body;
             lambda->enclosing_env = env;
 
@@ -267,9 +348,57 @@ B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasAST
 
             *result = falsy_node;
             return 1;
+        } else if (HeliosStringViewEqualCStr(sym_name, "macro")) {
+            AnanasList *args_list = list->cdr;
+            if (args_list == NULL) {
+                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "no name passed to 'macro' form");
+                return 0;
+            }
+
+            AnanasASTNode macro_name_node = args_list->car;
+            if (macro_name_node.type != AnanasASTNodeType_Symbol) {
+                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "'macro' name should be a symbol");
+                return 0;
+            }
+
+            HeliosStringView macro_name = macro_name_node.u.string;
+
+            args_list = args_list->cdr;
+            if (args_list == NULL) {
+                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "no arguments passed to 'macro' form");
+                return 0;
+            }
+
+            AnanasASTNode macro_args_node = args_list->car;
+            if (macro_args_node.type != AnanasASTNodeType_List) {
+                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "'macro' form arguments should be a list");
+                return 0;
+            }
+
+            AnanasList *macro_params_list = macro_args_node.u.list;
+            AnanasParams macro_params;
+            if (!AnanasParseParamsFromList(arena, macro_params_list, &macro_params, error_ctx)) return 0;
+
+            AnanasList *macro_body = args_list->cdr;
+
+            AnanasMacro *macro = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasMacro);
+            macro->body = macro_body;
+            macro->enclosing_env = env;
+            macro->params = macro_params;
+
+            AnanasASTNode macro_node = {
+                .type = AnanasASTNodeType_Macro,
+                .u = {
+                    .macro = macro,
+                },
+            };
+
+            AnanasEnvMapInsert(&env->map, macro_name, macro_node);
+            *result = macro_node;
+            return 1;
         } else {
-            AnanasASTNode fn_node;
-            if (!AnanasEnvLookup(env, sym_name, &fn_node)) {
+            AnanasASTNode callable_node;
+            if (!AnanasEnvLookup(env, sym_name, &callable_node)) {
                 AnanasToken token = list->car.token;
                 AnanasErrorContextMessage(error_ctx,
                                           token.row,
@@ -279,15 +408,32 @@ B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasAST
                 return 0;
             }
 
-            AnanasFunction *function = node.u.function;
-
-            return AnanasEvalFunctionWithArgumentList(function,
-                                                      list->cdr,
-                                                      node.token,
-                                                      arena,
-                                                      env,
-                                                      error_ctx,
-                                                      result);
+            if (callable_node.type == AnanasASTNodeType_Function) {
+                AnanasFunction *function = callable_node.u.function;
+                return AnanasEvalFunctionWithArgumentList(function,
+                                                          list->cdr,
+                                                          node.token,
+                                                          arena,
+                                                          env,
+                                                          error_ctx,
+                                                          result);
+            } else if (callable_node.type == AnanasASTNodeType_Macro) {
+                AnanasMacro *macro = callable_node.u.macro;
+                return AnanasEvalMacroWithArgumentList(macro,
+                                                       node.token,
+                                                       list->cdr,
+                                                       arena,
+                                                       error_ctx,
+                                                       result);
+            } else {
+                AnanasToken token = list->car.token;
+                AnanasErrorContextMessage(error_ctx,
+                                          token.row,
+                                          token.col,
+                                          "value of symbol '" HELIOS_SV_FMT "' is not callable",
+                                          HELIOS_SV_ARG(sym_name));
+                return 0;
+            }
         }
     }
     }
@@ -314,12 +460,15 @@ HeliosStringView AnanasPrint(HeliosAllocator allocator, AnanasASTNode node) {
         sprintf((char *)buffer, HELIOS_SV_FMT, HELIOS_SV_ARG(node.u.symbol));
         return (HeliosStringView) {.data = buffer, .count = required_bytes};
     }
+    case AnanasASTNodeType_Macro: {
+        return HELIOS_SV_LIT("<macro>");
+    }
     case AnanasASTNodeType_Function: {
         /* int required_bytes = snprintf(NULL, 0, "", HELIOS_SV_ARG(node.u.symbol)); */
         /* U8 *buffer = HeliosAlloc(allocator, required_bytes + 1); */
         /* sprintf((char *)buffer, HELIOS_SV_FMT, HELIOS_SV_ARG(node.u.symbol)); */
         /* return (HeliosStringView) {.data = buffer, .count = required_bytes}; */
-        HELIOS_TODO();
+        return HELIOS_SV_LIT("<function>");
     }
     case AnanasASTNodeType_List: {
         UZ buffer_cap = 32;
