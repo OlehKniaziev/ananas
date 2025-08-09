@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #include "eval.h"
+#include "print.h"
 #include "common.h"
 
 int main() {

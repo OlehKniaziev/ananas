@@ -1,5 +1,5 @@
-#ifndef ANANAS_INTERPRETER_H_
-#define ANANAS_INTERPRETER_H_
+#ifndef ANANAS_EVAL_H_
+#define ANANAS_EVAL_H_
 
 #include "astron.h"
 #include "read.h"
@@ -14,6 +14,5 @@ typedef struct AnanasEnv {
 void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator allocator);
 
 B32 AnanasEval(AnanasASTNode node, AnanasArena *arena, AnanasEnv *env, AnanasASTNode *result, AnanasErrorContext *error_ctx);
-HeliosStringView AnanasPrint(HeliosAllocator allocator, AnanasASTNode value);
 
-#endif // ANANAS_INTERPRETER_H_
+#endif // ANANAS_EVAL_H_
