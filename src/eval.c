@@ -34,7 +34,10 @@ void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator alloca
 
 #define ANANAS_ENUM_NATIVE_FUNCTIONS \
     X("cons", AnanasCons) \
-    X("read-file", AnanasReadFile)
+    X("read-file", AnanasReadFile) \
+    X("list", AnanasListProc) \
+    X("car", AnanasCar) \
+    X("cdr", AnanasCdr)
 
 #define X(name, func) ANANAS_DECLARE_NATIVE_FUNCTION(func);
 ANANAS_ENUM_NATIVE_FUNCTIONS
@@ -257,30 +260,41 @@ static const char *AnanasTypeName(AnanasValueType type) {
     }
 }
 
+#define ANANAS_NATIVE_ERROR_FMT(fmt, ...) do {                          \
+        AnanasErrorContextMessage(error_ctx,                            \
+                                  where.row,                            \
+                                  where.col,                            \
+                                  fmt,                                  \
+                                  __VA_ARGS__);                         \
+        return 0;                                                       \
+    } while (0)
+
+#define ANANAS_NATIVE_ERROR(msg)  do {          \
+        AnanasErrorContextMessage(error_ctx,    \
+                                  where.row,    \
+                                  where.col,    \
+                                  msg);         \
+        return 0;                               \
+    } while (0)
+
 #define ANANAS_CHECK_ARGS_COUNT(n) do {                                 \
         if (args.count != (n)) {                                        \
-            AnanasErrorContextMessage(error_ctx,                        \
-                                      where.row,                        \
-                                      where.col,                        \
-                                      "Argument count mismatch: expected %d but got %zu instead", \
-                                      (n),                              \
-                                      args.count);                      \
-            return 0;                                                   \
+            ANANAS_NATIVE_ERROR_FMT("Argument count mismatch: expected %d but got %zu instead", \
+                                    (n),                                \
+                                    args.count);                        \
         }                                                               \
     } while (0)
 
 #define ANANAS_CHECK_ARG_TYPE(n, arg_type, name)                        \
     AnanasValue name##_arg = AnanasArgAt(args, (n));                    \
     if (name##_arg.type != AnanasValueType_##arg_type) {                \
-        AnanasErrorContextMessage(error_ctx,                            \
-                                  where.row,                            \
-                                  where.col,                            \
-                                  "Argument type mismatch: expected the '" #name "' argument at position %d to be of type %s but got type %s instead", \
-                                  (n),                                  \
-                                  AnanasTypeName(AnanasValueType_##arg_type), \
-                                  AnanasTypeName(name##_arg.type));     \
-        return 0;                                                       \
+        ANANAS_NATIVE_ERROR_FMT("Argument type mismatch: expected the '" #name "' argument at position %d to be of type %s but got type %s instead", \
+                                (n),                                    \
+                                AnanasTypeName(AnanasValueType_##arg_type), \
+                                AnanasTypeName(name##_arg.type));       \
     }
+
+#define ANANAS_NATIVE_RETURN(value) do { *result = (value); return 1; } while (0)
 
 ANANAS_DEFINE_NATIVE_FUNCTION(AnanasCons) {
     ANANAS_CHECK_ARGS_COUNT(2);
@@ -294,6 +308,60 @@ ANANAS_DEFINE_NATIVE_FUNCTION(AnanasCons) {
     result->type = AnanasValueType_List;
     result->u.list = list;
 
+    return 1;
+}
+
+ANANAS_DEFINE_NATIVE_FUNCTION(AnanasListProc) {
+    (void) where;
+    (void) error_ctx;
+
+    AnanasList *result_list = NULL;
+    AnanasList *current_list = result_list;
+
+    for (UZ i = 0; i < args.count; ++i) {
+        AnanasList *list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+        list->car = args.values[i];
+        if (result_list == NULL) {
+            result_list = list;
+            current_list = list;
+        } else {
+            current_list->cdr = list;
+            current_list = list;
+        }
+    }
+
+    result->type = AnanasValueType_List;
+    result->u.list = result_list;
+    return 1;
+}
+
+ANANAS_DEFINE_NATIVE_FUNCTION(AnanasCar) {
+    (void) arena;
+    ANANAS_CHECK_ARGS_COUNT(1);
+
+    ANANAS_CHECK_ARG_TYPE(0, List, list);
+
+    AnanasList *list = list_arg.u.list;
+    if (list == NULL) {
+        ANANAS_NATIVE_ERROR("called 'car' on an empty list");
+    }
+
+    ANANAS_NATIVE_RETURN(list->car);
+}
+
+ANANAS_DEFINE_NATIVE_FUNCTION(AnanasCdr) {
+    (void) arena;
+    ANANAS_CHECK_ARGS_COUNT(1);
+
+    ANANAS_CHECK_ARG_TYPE(0, List, list);
+
+    AnanasList *list = list_arg.u.list;
+    if (list == NULL) {
+        ANANAS_NATIVE_ERROR("called 'cdr' on an empty list");
+    }
+
+    result->type = AnanasValueType_List;
+    result->u.list = list->cdr;
     return 1;
 }
 
