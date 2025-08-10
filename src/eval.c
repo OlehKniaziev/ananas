@@ -35,7 +35,7 @@ void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator alloca
 #define ANANAS_ENUM_NATIVE_FUNCTIONS \
     X("cons", AnanasCons)
 
-#define X(name, func) ANANAS_DECLARE_NATIVE_FUNCTION(func)
+#define X(name, func) ANANAS_DECLARE_NATIVE_FUNCTION(func);
 ANANAS_ENUM_NATIVE_FUNCTIONS
 #undef X
 
@@ -273,11 +273,7 @@ static const char *AnanasTypeName(AnanasValueType type) {
         return 0;                                                       \
     }
 
-B32 AnanasCons(AnanasArgs args,
-               AnanasToken where,
-               AnanasArena *arena,
-               AnanasErrorContext *error_ctx,
-               AnanasValue *result) {
+ANANAS_DEFINE_NATIVE_FUNCTION(AnanasCons) {
     ANANAS_CHECK_ARGS_COUNT(2);
 
     ANANAS_CHECK_ARG_TYPE(1, List, cdr);

@@ -58,7 +58,12 @@ static inline AnanasValue AnanasArgAt(AnanasArgs args, UZ idx) {
     return args.values[idx];
 }
 
-#define ANANAS_DECLARE_NATIVE_FUNCTION(name) B32 name(AnanasArgs, AnanasToken, AnanasArena *, AnanasErrorContext *, AnanasValue *);
+#define ANANAS_DECLARE_NATIVE_FUNCTION(name) B32 name(AnanasArgs args, \
+    AnanasToken where, \
+    AnanasArena *arena, \
+    AnanasErrorContext *error_ctx, \
+    AnanasValue *result)
+#define ANANAS_DEFINE_NATIVE_FUNCTION ANANAS_DECLARE_NATIVE_FUNCTION
 
 typedef B32 (*AnanasNativeFunction)(AnanasArgs args,
                                     AnanasToken where,
