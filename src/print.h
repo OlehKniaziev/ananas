@@ -4,6 +4,6 @@
 #include "helios.h"
 #include "read.h"
 
-HeliosStringView AnanasPrint(HeliosAllocator allocator, AnanasASTNode value);
+HeliosStringView AnanasPrint(HeliosAllocator allocator, AnanasValue value);
 
 #endif // ANANAS_PRINT_H_

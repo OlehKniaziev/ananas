@@ -12,6 +12,7 @@ int main() {
 
     AnanasEnv env;
     AnanasEnvInit(&env, NULL, arena_allocator);
+    AnanasRootEnvPopulate(&env);
 
     while (1) {
         U8 backing_error_buffer[1024];
@@ -35,13 +36,13 @@ int main() {
         AnanasLexer lexer;
         AnanasLexerInit(&lexer, &source);
 
-        AnanasASTNode node;
+        AnanasValue node;
         if (!AnanasReaderNext(&lexer, &arena, &node, &error_ctx)) {
             printf("Reader error: " HELIOS_SV_FMT "\n", HELIOS_SV_ARG(error_ctx.error_buffer));
             continue;
         }
 
-        AnanasASTNode result;
+        AnanasValue result;
         if (!AnanasEval(node, &arena, &env, &result, &error_ctx)) {
             printf("Eval error: " HELIOS_SV_FMT "\n", HELIOS_SV_ARG(error_ctx.error_buffer));
             continue;

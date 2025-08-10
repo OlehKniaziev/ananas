@@ -6,25 +6,25 @@ static const char *token_type_str_table[] = {
 #undef X
 };
 
-B32 AnanasReaderNext(AnanasLexer *lexer, AnanasArena *arena, AnanasASTNode *node, AnanasErrorContext *error_ctx) {
+B32 AnanasReaderNext(AnanasLexer *lexer, AnanasArena *arena, AnanasValue *node, AnanasErrorContext *error_ctx) {
     AnanasToken token;
     if (!AnanasLexerNext(lexer, &token)) return 0;
 
     switch (token.type) {
     case AnanasTokenType_Int: {
         HELIOS_ASSERT(HeliosParseS64DetectBase(token.value, &node->u.integer));
-        node->type = AnanasASTNodeType_Int;
+        node->type = AnanasValueType_Int;
         node->token = token;
         return 1;
     }
     case AnanasTokenType_String: {
-        node->type = AnanasASTNodeType_String;
+        node->type = AnanasValueType_String;
         node->u.string = token.value;
         node->token = token;
         return 1;
     }
     case AnanasTokenType_Symbol: {
-        node->type = AnanasASTNodeType_Symbol;
+        node->type = AnanasValueType_Symbol;
         node->u.symbol = token.value;
         node->token = token;
         return 1;
@@ -64,7 +64,7 @@ B32 AnanasReaderNext(AnanasLexer *lexer, AnanasArena *arena, AnanasASTNode *node
             }
         }
 
-        node->type = AnanasASTNodeType_List;
+        node->type = AnanasValueType_List;
         node->u.list = result_list;
 
         return 1;

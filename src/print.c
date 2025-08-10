@@ -1,37 +1,37 @@
 #include "print.h"
 
-HeliosStringView AnanasPrint(HeliosAllocator allocator, AnanasASTNode node) {
+HeliosStringView AnanasPrint(HeliosAllocator allocator, AnanasValue node) {
     switch (node.type) {
-    case AnanasASTNodeType_Int: {
+    case AnanasValueType_Int: {
         int required_bytes = snprintf(NULL, 0, "%ld", node.u.integer);
         U8 *buffer = HeliosAlloc(allocator, required_bytes + 1);
         sprintf((char *)buffer, "%ld", node.u.integer);
         return (HeliosStringView) {.data = buffer, .count = required_bytes};
     }
-    case AnanasASTNodeType_String: {
+    case AnanasValueType_String: {
         int required_bytes = snprintf(NULL, 0, "\"" HELIOS_SV_FMT "\"", HELIOS_SV_ARG(node.u.string));
         U8 *buffer = HeliosAlloc(allocator, required_bytes + 1);
         sprintf((char *)buffer, "\"" HELIOS_SV_FMT "\"", HELIOS_SV_ARG(node.u.string));
         return (HeliosStringView) {.data = buffer, .count = required_bytes};
 
     }
-    case AnanasASTNodeType_Symbol: {
+    case AnanasValueType_Symbol: {
         int required_bytes = snprintf(NULL, 0, HELIOS_SV_FMT, HELIOS_SV_ARG(node.u.symbol));
         U8 *buffer = HeliosAlloc(allocator, required_bytes + 1);
         sprintf((char *)buffer, HELIOS_SV_FMT, HELIOS_SV_ARG(node.u.symbol));
         return (HeliosStringView) {.data = buffer, .count = required_bytes};
     }
-    case AnanasASTNodeType_Macro: {
+    case AnanasValueType_Macro: {
         return HELIOS_SV_LIT("<macro>");
     }
-    case AnanasASTNodeType_Function: {
+    case AnanasValueType_Function: {
         /* int required_bytes = snprintf(NULL, 0, "", HELIOS_SV_ARG(node.u.symbol)); */
         /* U8 *buffer = HeliosAlloc(allocator, required_bytes + 1); */
         /* sprintf((char *)buffer, HELIOS_SV_FMT, HELIOS_SV_ARG(node.u.symbol)); */
         /* return (HeliosStringView) {.data = buffer, .count = required_bytes}; */
         return HELIOS_SV_LIT("<function>");
     }
-    case AnanasASTNodeType_List: {
+    case AnanasValueType_List: {
         UZ buffer_cap = 32;
         U8 *buffer = HeliosAlloc(allocator, buffer_cap);
 

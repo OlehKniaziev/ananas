@@ -6,13 +6,13 @@
 #include "lexer.h"
 
 typedef enum {
-    AnanasASTNodeType_String,
-    AnanasASTNodeType_Int,
-    AnanasASTNodeType_Symbol,
-    AnanasASTNodeType_List,
-    AnanasASTNodeType_Function,
-    AnanasASTNodeType_Macro,
-} AnanasASTNodeType;
+    AnanasValueType_String,
+    AnanasValueType_Int,
+    AnanasValueType_Symbol,
+    AnanasValueType_List,
+    AnanasValueType_Function,
+    AnanasValueType_Macro,
+} AnanasValueType;
 
 struct AnanasList;
 typedef struct AnanasList AnanasList;
@@ -24,7 +24,7 @@ struct AnanasMacro;
 typedef struct AnanasMacro AnanasMacro;
 
 typedef struct {
-    AnanasASTNodeType type;
+    AnanasValueType type;
     AnanasToken token;
     union {
         HeliosStringView string;
@@ -34,11 +34,11 @@ typedef struct {
         AnanasFunction *function;
         AnanasMacro *macro;
     } u;
-} AnanasASTNode;
+} AnanasValue;
 
 struct AnanasList {
+    AnanasValue car;
     struct AnanasList *cdr;
-    AnanasASTNode car;
 };
 
 struct AnanasEnv;
@@ -48,10 +48,36 @@ typedef struct {
     UZ count;
 } AnanasParams;
 
-struct AnanasFunction {
+typedef struct {
+    AnanasValue *values;
+    UZ count;
+} AnanasArgs;
+
+static inline AnanasValue AnanasArgAt(AnanasArgs args, UZ idx) {
+    HELIOS_VERIFY(args.count > idx);
+    return args.values[idx];
+}
+
+#define ANANAS_DECLARE_NATIVE_FUNCTION(name) B32 name(AnanasArgs, AnanasToken, AnanasArena *, AnanasErrorContext *, AnanasValue *);
+
+typedef B32 (*AnanasNativeFunction)(AnanasArgs args,
+                                    AnanasToken where,
+                                    AnanasArena *arena,
+                                    AnanasErrorContext *error_ctx,
+                                    AnanasValue *result);
+
+typedef struct {
     AnanasParams params;
     AnanasList *body;
     struct AnanasEnv *enclosing_env;
+} AnanasUserFunction;
+
+struct AnanasFunction {
+    B32 is_native;
+    union {
+        AnanasNativeFunction native;
+        AnanasUserFunction user;
+    } u;
 };
 
 struct AnanasMacro {
@@ -60,6 +86,6 @@ struct AnanasMacro {
     struct AnanasEnv *enclosing_env;
 };
 
-B32 AnanasReaderNext(AnanasLexer *lexer, AnanasArena *arena, AnanasASTNode *node, AnanasErrorContext *error_ctx);
+B32 AnanasReaderNext(AnanasLexer *lexer, AnanasArena *arena, AnanasValue *node, AnanasErrorContext *error_ctx);
 
 #endif // ANANAS_READER_H_
