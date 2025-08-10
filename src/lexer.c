@@ -1,12 +1,16 @@
 #include "lexer.h"
 
-B32 AnanasIsReaderMacroChar(HeliosChar c) {
+static B32 AnanasIsReaderMacroChar(HeliosChar c) {
     return c == '@' ||
            c == ',' ||
            c == '.' ||
            c == '#' ||
            c == '~' ||
            c == '\'';
+}
+
+static B32 AnanasIsSymbolChar(HeliosChar c) {
+    return HeliosCharIsAlpha(c) || c == '-' || c == '_' || c == '/' || c == '+' || c == '*' || c == '=' || c == '!' || c == '?';
 }
 
 #define ANANAS_LEXER_READ_WHILE(pred) while (1) {                       \
@@ -86,10 +90,10 @@ B32 AnanasLexerNext(AnanasLexer *lexer, AnanasToken *token) {
         token->row = lexer->row;
         UZ start = lexer->contents->byte_offset;
 
-        if (HeliosCharIsAlpha(cur_char)) {
+        if (AnanasIsSymbolChar(cur_char)) {
             token->type = AnanasTokenType_Symbol;
 
-            ANANAS_LEXER_READ_WHILE(HeliosCharIsAlpha);
+            ANANAS_LEXER_READ_WHILE(AnanasIsSymbolChar);
         } else if (HeliosCharIsDigit(cur_char)) {
             token->type = AnanasTokenType_Int;
 
