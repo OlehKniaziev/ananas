@@ -8,6 +8,7 @@
 typedef enum {
     AnanasValueType_String,
     AnanasValueType_Int,
+    AnanasValueType_Bool,
     AnanasValueType_Symbol,
     AnanasValueType_List,
     AnanasValueType_Function,
@@ -29,6 +30,7 @@ typedef struct {
     union {
         HeliosStringView string;
         S64 integer;
+        B32 boolean;
         HeliosStringView symbol;
         AnanasList *list;
         AnanasFunction *function;
@@ -90,5 +92,9 @@ struct AnanasMacro {
     AnanasList *body;
     struct AnanasEnv *enclosing_env;
 };
+
+#define ANANAS_BOOL(value) ((AnanasValue) {.type = AnanasValueType_Bool, .u = {.boolean = (value)}})
+#define ANANAS_FALSE ANANAS_BOOL(0)
+#define ANANAS_TRUE ANANAS_BOOL(1)
 
 #endif // ANANAS_VALUE_H_

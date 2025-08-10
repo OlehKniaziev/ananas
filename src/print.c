@@ -15,6 +15,13 @@ HeliosStringView AnanasPrint(HeliosAllocator allocator, AnanasValue node) {
         return (HeliosStringView) {.data = buffer, .count = required_bytes};
 
     }
+    case AnanasValueType_Bool: {
+        if (node.u.boolean) {
+            return HELIOS_SV_LIT("true");
+        } else {
+            return HELIOS_SV_LIT("false");
+        }
+    }
     case AnanasValueType_Symbol: {
         int required_bytes = snprintf(NULL, 0, HELIOS_SV_FMT, HELIOS_SV_ARG(node.u.symbol));
         U8 *buffer = HeliosAlloc(allocator, required_bytes + 1);

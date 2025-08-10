@@ -41,12 +41,17 @@ ANANAS_ENUM_NATIVE_FUNCTIONS
 
 void AnanasRootEnvPopulate(AnanasEnv *env) {
     HeliosAllocator allocator = env->map.allocator;
-#define X(name, func) \
+
+    AnanasEnvMapInsert(&env->map, HELIOS_SV_LIT("true"), ANANAS_TRUE);
+    AnanasEnvMapInsert(&env->map, HELIOS_SV_LIT("false"), ANANAS_FALSE);
+
+#define X(name, func) { \
     AnanasFunction *native_func = HeliosAlloc(allocator, sizeof(AnanasFunction)); \
     native_func->is_native = 1; \
     native_func->u.native = func; \
     AnanasValue func_value = {.type = AnanasValueType_Function, .u = {.function = native_func}}; \
-    AnanasEnvMapInsert(&env->map, HELIOS_SV_LIT(name), func_value);
+    AnanasEnvMapInsert(&env->map, HELIOS_SV_LIT(name), func_value); \
+    }
 ANANAS_ENUM_NATIVE_FUNCTIONS
 #undef X
 }
@@ -61,6 +66,8 @@ static B32 AnanasConvertToBool(AnanasValue node) {
     case AnanasValueType_Function:
     case AnanasValueType_Macro:
         return 1;
+
+    case AnanasValueType_Bool: return node.u.boolean;
     }
 }
 
@@ -241,6 +248,7 @@ static const char *AnanasTypeName(AnanasValueType type) {
     switch (type) {
     case AnanasValueType_Int:      return "int";
     case AnanasValueType_String:   return "string";
+    case AnanasValueType_Bool:     return "bool";
     case AnanasValueType_Function: return "function";
     case AnanasValueType_Macro:    return "macro";
     case AnanasValueType_List:     return "list";
@@ -292,6 +300,7 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
     switch (node.type) {
     case AnanasValueType_Macro:
     case AnanasValueType_Function:
+    case AnanasValueType_Bool:
     case AnanasValueType_String:
     case AnanasValueType_Int: {
         *result = node;
