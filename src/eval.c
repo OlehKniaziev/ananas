@@ -33,7 +33,8 @@ void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator alloca
 }
 
 #define ANANAS_ENUM_NATIVE_FUNCTIONS \
-    X("cons", AnanasCons)
+    X("cons", AnanasCons) \
+    X("read-file", AnanasReadFile)
 
 #define X(name, func) ANANAS_DECLARE_NATIVE_FUNCTION(func);
 ANANAS_ENUM_NATIVE_FUNCTIONS
@@ -293,6 +294,25 @@ ANANAS_DEFINE_NATIVE_FUNCTION(AnanasCons) {
     result->type = AnanasValueType_List;
     result->u.list = list;
 
+    return 1;
+}
+
+ANANAS_DEFINE_NATIVE_FUNCTION(AnanasReadFile) {
+    ANANAS_CHECK_ARGS_COUNT(1);
+
+    ANANAS_CHECK_ARG_TYPE(0, String, file_name);
+
+    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
+
+    HeliosStringView file_name = file_name_arg.u.string;
+    HeliosStringView file_contents = HeliosReadEntireFile(arena_allocator, file_name);
+    if (file_contents.data == NULL) {
+        *result = ANANAS_FALSE;
+        return 1;
+    }
+
+    result->type = AnanasValueType_String;
+    result->u.string = file_contents;
     return 1;
 }
 

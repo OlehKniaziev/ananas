@@ -49,8 +49,10 @@ HeliosAllocator AnanasArenaToHeliosAllocator(AnanasArena *arena) {
 void AnanasErrorContextMessage(AnanasErrorContext *ctx, U32 row, U32 col, const char *fmt, ...) {
     ctx->ok = 0;
 
+    HeliosAllocator temp_alloc = HeliosGetTempAllocator();
+
     UZ fmt_buffer_count = strlen(fmt) + ctx->place.count + 50;
-    U8 *fmt_buffer = HeliosAlloc(helios_temp_allocator, fmt_buffer_count + 1);
+    U8 *fmt_buffer = HeliosAlloc(temp_alloc, fmt_buffer_count + 1);
     snprintf((char *)fmt_buffer,
              fmt_buffer_count,
              HELIOS_SV_FMT ":%u:%u: %s",

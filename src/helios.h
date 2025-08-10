@@ -8,7 +8,6 @@
 #include <malloc.h>
 #include <string.h>
 #include <ctype.h>
-#include <sys/mman.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -72,7 +71,20 @@ extern "C" {
 #else
 #    define HELIOS_PLATFORM_POSIX
 #    define HELIOS_PAGE_ALIGNMENT (1024 * 4)
+
+#    include <fcntl.h>
+#    include <unistd.h>
+#    include <sys/stat.h>
+#    include <sys/mman.h>
 #endif // _WIN32
+
+#if defined(__clang__)
+#    define HELIOS_COMPILER_CLANG
+#elif defined(__GNUC__)
+#    define HELIOS_COMPILER_GCC
+#elif defined(_MSVC_VER)
+#    define HELIOS_COMPILER_MSVC
+#endif
 
 #define HELIOS_INTERNAL static
 
@@ -157,7 +169,7 @@ HELIOS_INLINE UZ HeliosRoundDown(UZ size, UZ align) {
     return size - (size & (align - 1));
 }
 
-extern HeliosAllocator helios_temp_allocator;
+HeliosAllocator HeliosGetTempAllocator(void);
 
 typedef struct HeliosString8 {
     U8 *data;
@@ -173,12 +185,18 @@ typedef struct HeliosStringView {
 
 #define HELIOS_SV_FMT "%.*s"
 #define HELIOS_SV_ARG(sv) (int)(sv).count, (const char*)((sv).data)
-#define HELIOS_SV_LIT(cstr) ((HeliosStringView) {.data = (U8 *)(cstr), .count =strlen((cstr))})
+#define HELIOS_SV_LIT(cstr) ((HeliosStringView) {.data = (U8 *)(cstr), .count = strlen((cstr))})
 
 HELIOS_INLINE HeliosStringView HeliosStringViewClone(HeliosAllocator allocator, HeliosStringView sv) {
     U8 *data = (U8 *)HeliosAlloc(allocator, sv.count);
     memcpy(data, sv.data, sv.count);
     return (HeliosStringView) { .data = data, .count = sv.count };
+}
+
+HELIOS_INLINE char *HeliosStringViewCloneToCStr(HeliosAllocator allocator, HeliosStringView sv) {
+    char *data = (char *)HeliosAlloc(allocator, sv.count + 1);
+    memcpy(data, sv.data, sv.count);
+    return data;
 }
 
 HELIOS_INLINE B32 HeliosStringViewStartsWithSV(HeliosStringView sv, HeliosStringView prefix) {
@@ -287,6 +305,8 @@ HELIOS_INLINE HeliosString8 HeliosString8FromStringView(HeliosAllocator allocato
     };
 }
 
+HELIOS_DEF HeliosStringView HeliosReadEntireFile(HeliosAllocator, HeliosStringView);
+
 #ifdef __cplusplus
     }
 #endif // __cplusplus
@@ -384,8 +404,10 @@ HELIOS_DEF B32 HeliosParseS64DetectBase(HeliosStringView sv, S64 *out) {
 // FIXME: This should NOT allocate anything, even on the temp allocator.
 // Skill issue.
 HELIOS_DEF B32 HeliosParseF64(HeliosStringView source, F64 *out) {
+    HeliosAllocator temp_alloc = HeliosGetTempAllocator();
+
     UZ temp_count = source.count + 1;
-    char *temp = (char *)HeliosAlloc(helios_temp_allocator, temp_count);
+    char *temp = (char *)HeliosAlloc(temp_alloc, temp_count);
     memcpy(temp, (const void *)source.data, source.count);
     temp[temp_count] = '\0';
 
@@ -480,7 +502,20 @@ HELIOS_INTERNAL HeliosDynamicCircleBufferAllocator _helios_temp_impl = {
     .offset = 0,
 };
 
-HeliosAllocator helios_temp_allocator = {
+#if defined(HELIOS_COMPILER_MSVC) || defined(HELIOS_COMPILER_GCC)
+HELIOS_DEF HeliosAllocator HeliosGetTempAllocator(void) {
+    return (HeliosAllocator) {
+        .data = (void *)&_helios_temp_impl,
+        .vtable = (HeliosAllocatorVTable) {
+            .alloc = _HeliosDynamicCircleBufferAllocatorAlloc,
+            .free = _HeliosNopFreeStub,
+            .realloc = NULL,
+        },
+    };
+}
+
+#else
+HELIOS_INTERNAL HeliosAllocator _helios_temp_allocator = {
     .data = (void *)&_helios_temp_impl,
     .vtable = (HeliosAllocatorVTable) {
         .alloc = _HeliosDynamicCircleBufferAllocatorAlloc,
@@ -488,6 +523,11 @@ HeliosAllocator helios_temp_allocator = {
         .realloc = NULL,
     },
 };
+
+HELIOS_DEF HeliosAllocator HeliosGetTempAllocator(void) {
+    return _helios_temp_allocator;
+}
+#endif
 
 HELIOS_DEF void HeliosString8StreamInit(HeliosString8Stream *stream, const U8 *data, UZ count) {
     stream->data = data;
@@ -543,6 +583,36 @@ HELIOS_DEF void HeliosString8StreamRetreat(HeliosString8Stream *s) {
     s->byte_offset -= s->last_char_size;
     s->char_offset -= 1;
     s->last_char_size = -1;
+}
+
+HELIOS_DEF HeliosStringView HeliosReadEntireFile(HeliosAllocator allocator, HeliosStringView path) {
+    char *path_cstr = HeliosStringViewCloneToCStr(allocator, path);
+
+    ssize_t fd = open(path_cstr, O_RDONLY);
+    if (fd == -1) {
+        return (HeliosStringView) {.data = NULL, .count = 0};
+    }
+
+    struct stat file_stat;
+    int ret = fstat(fd, &file_stat);
+    if (ret == -1) {
+        return (HeliosStringView) {.data = NULL, .count = 0};
+    }
+
+    size_t file_size = file_stat.st_size;
+    U8 *file_buf = HeliosAlloc(allocator, file_size);
+
+    size_t total_bytes_read = 0;
+    while (total_bytes_read != file_size) {
+        ssize_t n = read(fd, &file_buf[total_bytes_read], file_size - total_bytes_read);
+        if (n == -1) {
+            HeliosFree(allocator, file_buf, file_size);
+            return (HeliosStringView) {.data = NULL, .count = 0};
+        }
+        total_bytes_read += (size_t)n;
+    }
+
+    return (HeliosStringView) {.data = file_buf, .count = file_size};
 }
 
 #endif // HELIOS_IMPLEMENTATION
