@@ -1,9 +1,9 @@
 #include "lexer.h"
 
 static B32 AnanasIsReaderMacroChar(HeliosChar c) {
-    return c == '@' ||
+    return c == '`' ||
+           c == '@' ||
            c == ',' ||
-           c == '.' ||
            c == '#' ||
            c == '~' ||
            c == '\'';
@@ -102,6 +102,8 @@ B32 AnanasLexerNext(AnanasLexer *lexer, AnanasToken *token) {
             token->type = AnanasTokenType_ReaderMacro;
 
             ANANAS_LEXER_READ_WHILE(AnanasIsReaderMacroChar);
+        } else {
+            token->type = AnanasTokenType_Illegal;
         }
 
         token->value.data = lexer->contents->data + start;
