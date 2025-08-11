@@ -586,16 +586,47 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
             }
 
             AnanasValue var_value;
-            if (!AnanasEval(var_value_cons->car, arena, env, &var_value, error_ctx)) {
-                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "'var' value eval error");
-                return 0;
-            }
+            if (!AnanasEval(var_value_cons->car, arena, env, &var_value, error_ctx)) return 0;
 
             AnanasEnvMapInsert(&env->map, var_name, var_value);
 
             *result = var_value;
 
             return 1;
+        } else if (HeliosStringViewEqualCStr(sym_name, "if")) {
+            AnanasList *args_list = list->cdr;
+
+            if (args_list == NULL) {
+                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "no arguments passed to 'if'");
+                return 0;
+            }
+
+            if (args_list->cdr == NULL) {
+                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "'if' form requires at least two arguments");
+                return 0;
+            }
+
+            AnanasValue cond_value = args_list->car;
+            AnanasValue cond;
+            if (!AnanasEval(cond_value, arena, env, &cond, error_ctx)) return 0;
+
+            AnanasValue branch_to_eval;
+
+            if (AnanasConvertToBool(cond)) {
+                AnanasList *cons_args = args_list->cdr;
+                HELIOS_ASSERT(cons_args != NULL);
+                branch_to_eval = cons_args->car;
+            } else {
+                AnanasList *alt_args = args_list->cdr->cdr;
+                if (alt_args == NULL) {
+                    *result = ANANAS_FALSE;
+                    return 1;
+                }
+
+                branch_to_eval = alt_args->car;
+            }
+
+            return AnanasEval(branch_to_eval, arena, env, result, error_ctx);
         } else if (HeliosStringViewEqualCStr(sym_name, "lambda")) {
             AnanasList *lambda_params_cons = list->cdr;
             if (lambda_params_cons == NULL) {
