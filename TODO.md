@@ -4,6 +4,6 @@
 - [x] Basic string operations
 - [ ] Switch/pattern matching
 - [x] `quote` and `unquote` sforms
-- [ ] Reader macros
+- [x] Reader macros
 - [x] `let` sform
 - [ ] Write an x86-64 backend
