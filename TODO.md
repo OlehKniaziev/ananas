@@ -3,6 +3,7 @@
 - [x] Basic list operations
 - [x] Basic string operations
 - [ ] Switch/pattern matching
-- [ ] `quote` and `unquote` sforms
+- [x] `quote` and `unquote` sforms
+- [ ] Reader macros
 - [x] `let` sform
 - [ ] Write an x86-64 backend
