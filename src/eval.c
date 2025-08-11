@@ -37,7 +37,10 @@ void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator alloca
     X("read-file", AnanasReadFile) \
     X("list", AnanasListProc) \
     X("car", AnanasCar) \
-    X("cdr", AnanasCdr)
+    X("cdr", AnanasCdr) \
+    X("string-split", AnanasStringSplit) \
+    X("concat", AnanasConcat) \
+    X("substring", AnanasSubstring)
 
 #define X(name, func) ANANAS_DECLARE_NATIVE_FUNCTION(func);
 ANANAS_ENUM_NATIVE_FUNCTIONS
@@ -260,7 +263,7 @@ static const char *AnanasTypeName(AnanasValueType type) {
     }
 }
 
-#define ANANAS_NATIVE_ERROR_FMT(fmt, ...) do {                          \
+#define ANANAS_NATIVE_BAIL_FMT(fmt, ...) do {                          \
         AnanasErrorContextMessage(error_ctx,                            \
                                   where.row,                            \
                                   where.col,                            \
@@ -269,7 +272,7 @@ static const char *AnanasTypeName(AnanasValueType type) {
         return 0;                                                       \
     } while (0)
 
-#define ANANAS_NATIVE_ERROR(msg)  do {          \
+#define ANANAS_NATIVE_BAIL(msg)  do {          \
         AnanasErrorContextMessage(error_ctx,    \
                                   where.row,    \
                                   where.col,    \
@@ -279,7 +282,7 @@ static const char *AnanasTypeName(AnanasValueType type) {
 
 #define ANANAS_CHECK_ARGS_COUNT(n) do {                                 \
         if (args.count != (n)) {                                        \
-            ANANAS_NATIVE_ERROR_FMT("Argument count mismatch: expected %d but got %zu instead", \
+            ANANAS_NATIVE_BAIL_FMT("Argument count mismatch: expected %d but got %zu instead", \
                                     (n),                                \
                                     args.count);                        \
         }                                                               \
@@ -288,7 +291,7 @@ static const char *AnanasTypeName(AnanasValueType type) {
 #define ANANAS_CHECK_ARG_TYPE(n, arg_type, name)                        \
     AnanasValue name##_arg = AnanasArgAt(args, (n));                    \
     if (name##_arg.type != AnanasValueType_##arg_type) {                \
-        ANANAS_NATIVE_ERROR_FMT("Argument type mismatch: expected the '" #name "' argument at position %d to be of type %s but got type %s instead", \
+        ANANAS_NATIVE_BAIL_FMT("Argument type mismatch: expected the '" #name "' argument at position %d to be of type %s but got type %s instead", \
                                 (n),                                    \
                                 AnanasTypeName(AnanasValueType_##arg_type), \
                                 AnanasTypeName(name##_arg.type));       \
@@ -343,7 +346,7 @@ ANANAS_DEFINE_NATIVE_FUNCTION(AnanasCar) {
 
     AnanasList *list = list_arg.u.list;
     if (list == NULL) {
-        ANANAS_NATIVE_ERROR("called 'car' on an empty list");
+        ANANAS_NATIVE_BAIL("called 'car' on an empty list");
     }
 
     ANANAS_NATIVE_RETURN(list->car);
@@ -357,7 +360,7 @@ ANANAS_DEFINE_NATIVE_FUNCTION(AnanasCdr) {
 
     AnanasList *list = list_arg.u.list;
     if (list == NULL) {
-        ANANAS_NATIVE_ERROR("called 'cdr' on an empty list");
+        ANANAS_NATIVE_BAIL("called 'cdr' on an empty list");
     }
 
     result->type = AnanasValueType_List;
@@ -381,6 +384,123 @@ ANANAS_DEFINE_NATIVE_FUNCTION(AnanasReadFile) {
 
     result->type = AnanasValueType_String;
     result->u.string = file_contents;
+    return 1;
+}
+
+ANANAS_DEFINE_NATIVE_FUNCTION(AnanasStringSplit) {
+    ANANAS_CHECK_ARGS_COUNT(2);
+
+    ANANAS_CHECK_ARG_TYPE(0, String, string);
+    ANANAS_CHECK_ARG_TYPE(1, String, separator);
+
+    HeliosStringView string = string_arg.u.string;
+    HeliosStringView separator = separator_arg.u.string;
+
+    AnanasList *results_list = NULL;
+    AnanasList *current_list = results_list;
+
+    UZ substring_start = 0;
+    for (SZ i = 0; i < (SZ)string.count - (SZ)separator.count + 1; ) {
+        HeliosStringView s = {.data = &string.data[i], .count = separator.count};
+        if (!HeliosStringViewEqual(separator, s)) {
+            ++i;
+            continue;
+        }
+
+        HeliosStringView string_part = {.data = &string.data[substring_start], .count = i - substring_start};
+
+        AnanasList *list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+        list->car.type = AnanasValueType_String;
+        list->car.u.string = string_part;
+
+        if (results_list == NULL) {
+            results_list = list;
+            current_list = list;
+        } else {
+            current_list->cdr = list;
+            current_list = list;
+        }
+
+        substring_start = i + s.count;
+        i += s.count;
+    }
+
+    HeliosStringView last_string_part = {.data = &string.data[substring_start], .count = string.count - substring_start};
+
+    AnanasList *list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+    list->car.type = AnanasValueType_String;
+    list->car.u.string = last_string_part;
+
+    if (results_list == NULL) {
+        results_list = list;
+    } else {
+        current_list->cdr = list;
+    }
+
+    result->type = AnanasValueType_List;
+    result->u.list = results_list;
+    return 1;
+}
+
+ANANAS_DEFINE_NATIVE_FUNCTION(AnanasConcat) {
+    ANANAS_CHECK_ARGS_COUNT(2);
+
+    ANANAS_CHECK_ARG_TYPE(0, String, lhs);
+    ANANAS_CHECK_ARG_TYPE(1, String, rhs);
+
+    HeliosStringView lhs = lhs_arg.u.string;
+    HeliosStringView rhs = rhs_arg.u.string;
+
+    UZ buf_count = lhs.count + rhs.count;
+
+    U8 *buf = AnanasArenaPush(arena, buf_count);
+    memcpy(buf, lhs.data, lhs.count);
+    memcpy(&buf[lhs.count], rhs.data, rhs.count);
+
+    result->type = AnanasValueType_String;
+    result->u.string.data = buf;
+    result->u.string.count = buf_count;
+    return 1;
+}
+
+ANANAS_DEFINE_NATIVE_FUNCTION(AnanasSubstring) {
+    (void) arena;
+
+    if (args.count < 2) {
+        ANANAS_NATIVE_BAIL_FMT("expected at least 2 arguments, got %zu instead", args.count);
+    }
+
+    ANANAS_CHECK_ARG_TYPE(0, String, string);
+    ANANAS_CHECK_ARG_TYPE(1, Int, start);
+
+    HeliosStringView string = string_arg.u.string;
+    UZ substring_start = start_arg.u.integer;
+
+    if (substring_start >= string.count) {
+        result->type = AnanasValueType_String;
+        result->u.string = HELIOS_SV_LIT("");
+        return 1;
+    }
+
+    UZ substring_count;
+
+    if (args.count == 2) {
+        substring_count = string.count - substring_start;
+    } else if (args.count == 3) {
+        ANANAS_CHECK_ARG_TYPE(2, Int, count);
+        substring_count = count_arg.u.integer;
+
+        UZ available_bytes = string.count - substring_start;
+        if (available_bytes < substring_count) {
+            ANANAS_NATIVE_BAIL_FMT("number of available bytes %zu in string is less than requested (%zu)", available_bytes, substring_count);
+        }
+    } else {
+        HELIOS_UNREACHABLE();
+    }
+
+    result->type = AnanasValueType_String;
+    result->u.string.data = &string.data[substring_start];
+    result->u.string.count = substring_count;
     return 1;
 }
 
