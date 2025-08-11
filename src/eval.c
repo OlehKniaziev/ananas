@@ -667,6 +667,89 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
 
             *result = falsy_node;
             return 1;
+        } else if (HeliosStringViewEqualCStr(sym_name, "let")) {
+            AnanasList *args_list = list->cdr;
+            if (args_list == NULL) {
+                AnanasErrorContextMessage(error_ctx,
+                                          node.token.row,
+                                          node.token.col,
+                                          "no bindings list passed to 'let' form");
+                return 0;
+            }
+
+            AnanasValue bindings_value = args_list->car;
+            if (bindings_value.type != AnanasValueType_List) {
+                AnanasErrorContextMessage(error_ctx,
+                                          bindings_value.token.row,
+                                          bindings_value.token.col,
+                                          "first argument to the 'let' form is not a list");
+                return 0;
+            }
+
+            HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
+
+            AnanasEnv let_env;
+            AnanasEnvInit(&let_env, env, arena_allocator);
+            AnanasList *bindings_list = bindings_value.u.list;
+
+            while (bindings_list != NULL) {
+                AnanasValue binding_pair_as_value = bindings_list->car;
+                if (binding_pair_as_value.type != AnanasValueType_List) {
+                    AnanasErrorContextMessage(error_ctx,
+                                              binding_pair_as_value.token.row,
+                                              binding_pair_as_value.token.col,
+                                              "expected a list, got a value of type '%s' instead",
+                                              AnanasTypeName(binding_pair_as_value.type));
+                    return 0;
+                }
+
+                AnanasList *binding_pair = binding_pair_as_value.u.list;
+                if (binding_pair == NULL) {
+                    AnanasErrorContextMessage(error_ctx,
+                                              binding_pair_as_value.token.row,
+                                              binding_pair_as_value.token.col,
+                                              "cannot use an empty list as a binding pair");
+                    return 0;
+                }
+
+                if (binding_pair->cdr == NULL) {
+                    AnanasErrorContextMessage(error_ctx,
+                                              binding_pair_as_value.token.row,
+                                              binding_pair_as_value.token.col,
+                                              "missing a binding value in a binding pair");
+                    return 0;
+                }
+
+                if (binding_pair->cdr->cdr != NULL) {
+                    AnanasErrorContextMessage(error_ctx,
+                                              binding_pair_as_value.token.row,
+                                              binding_pair_as_value.token.col,
+                                              "a binding pair is expected to have exactly 2 elements");
+                    return 0;
+                }
+
+                AnanasValue binding_pair_name_value = binding_pair->car;
+                if (binding_pair_name_value.type != AnanasValueType_Symbol) {
+                    AnanasErrorContextMessage(error_ctx,
+                                              binding_pair_name_value.token.row,
+                                              binding_pair_name_value.token.col,
+                                              "a name in a binding pair should be a symbol");
+                    return 0;
+                }
+
+                HeliosStringView binding_pair_name = binding_pair_name_value.u.symbol;
+                AnanasValue binding_pair_given_value = binding_pair->cdr->car;
+
+                AnanasValue binding_pair_value;
+                if (!AnanasEval(binding_pair_given_value, arena, &let_env, &binding_pair_value, error_ctx)) return 0;
+
+                AnanasEnvMapInsert(&let_env.map, binding_pair_name, binding_pair_value);
+
+                bindings_list = bindings_list->cdr;
+            }
+
+            AnanasList *forms_to_eval = args_list->cdr;
+            return AnanasEvalFormList(forms_to_eval, arena, &let_env, error_ctx, result);
         } else if (HeliosStringViewEqualCStr(sym_name, "macro")) {
             AnanasList *args_list = list->cdr;
             if (args_list == NULL) {
