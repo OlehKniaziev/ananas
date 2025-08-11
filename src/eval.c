@@ -177,6 +177,7 @@ static B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
                                            AnanasToken where,
                                            AnanasList *args_list,
                                            AnanasArena *arena,
+                                           AnanasEnv *env,
                                            AnanasErrorContext *error_ctx,
                                            AnanasValue *result) {
     HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
@@ -213,11 +214,13 @@ static B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
         return 0;
     }
 
-    return AnanasEvalFormList(macro->body,
-                              arena,
-                              &call_env,
-                              error_ctx,
-                              result);
+    AnanasValue macro_result;
+    if (!AnanasEvalFormList(macro->body,
+                            arena,
+                            &call_env,
+                            error_ctx,
+                            &macro_result)) return 1;
+    return AnanasEval(macro_result, arena, env, result, error_ctx);
 }
 
 ERMIS_DECL_ARRAY(HeliosStringView, AnanasParamsArray)
@@ -890,6 +893,7 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
                                                        node.token,
                                                        list->cdr,
                                                        arena,
+                                                       env,
                                                        error_ctx,
                                                        result);
             } else {
