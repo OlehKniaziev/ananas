@@ -87,10 +87,20 @@ struct AnanasFunction {
     } u;
 };
 
-struct AnanasMacro {
+typedef AnanasNativeFunction AnanasNativeMacro;
+
+typedef struct {
     AnanasParams params;
     AnanasList *body;
     struct AnanasEnv *enclosing_env;
+} AnanasUserMacro;
+
+struct AnanasMacro {
+    B32 is_native;
+    union {
+        AnanasNativeMacro native;
+        AnanasUserMacro user;
+    } u;
 };
 
 #define ANANAS_BOOL(value) ((AnanasValue) {.type = AnanasValueType_Bool, .u = {.boolean = (value)}})

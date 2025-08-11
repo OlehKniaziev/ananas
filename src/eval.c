@@ -182,40 +182,59 @@ static B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
                                            AnanasValue *result) {
     HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
 
+    if (macro->is_native) {
+        AnanasNativeMacro native_macro = macro->u.native;
+
+        AnanasArgsArray args_array;
+        AnanasArgsArrayInit(&args_array, arena_allocator, 10);
+
+        while (args_list != NULL) {
+            AnanasValue arg = args_list->car;
+            AnanasArgsArrayPush(&args_array, arg);
+            args_list = args_list->cdr;
+        }
+
+        AnanasArgs call_args = {.values = args_array.items, .count = args_array.count};
+
+        return native_macro(call_args, where, arena, error_ctx, result);
+    }
+
+    AnanasUserMacro user_macro = macro->u.user;
+
     AnanasEnv call_env;
-    AnanasEnvInit(&call_env, macro->enclosing_env, arena_allocator);
+    AnanasEnvInit(&call_env, user_macro.enclosing_env, arena_allocator);
 
     UZ args_count = 0;
     while (args_list != NULL) {
-        if (args_count >= macro->params.count) {
+        if (args_count >= user_macro.params.count) {
             AnanasErrorContextMessage(error_ctx,
                                       where.row,
                                       where.col,
                                       "Too many arguments for macro call: expected '%zu', got %zu instead",
                                       args_count,
-                                      macro->params.count);
+                                      user_macro.params.count);
             return 0;
         }
 
-        HeliosStringView param_name = macro->params.names[args_count];
+        HeliosStringView param_name = user_macro.params.names[args_count];
         AnanasEnvMapInsert(&call_env.map, param_name, args_list->car);
 
         ++args_count;
         args_list = args_list->cdr;
     }
 
-    if (args_count != macro->params.count) {
+    if (args_count != user_macro.params.count) {
         AnanasErrorContextMessage(error_ctx,
                                   where.row,
                                   where.col,
                                   "Not enough arguments for macro call: expected '%zu', got %zu instead",
-                                  macro->params.count,
+                                  user_macro.params.count,
                                   args_count);
         return 0;
     }
 
     AnanasValue macro_result;
-    if (!AnanasEvalFormList(macro->body,
+    if (!AnanasEvalFormList(user_macro.body,
                             arena,
                             &call_env,
                             error_ctx,
@@ -851,10 +870,14 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
 
             AnanasList *macro_body = args_list->cdr;
 
+            AnanasUserMacro user_macro = {
+                .body = macro_body,
+                .enclosing_env = env,
+                .params = macro_params,
+            };
             AnanasMacro *macro = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasMacro);
-            macro->body = macro_body;
-            macro->enclosing_env = env;
-            macro->params = macro_params;
+            macro->is_native = 0;
+            macro->u.user = user_macro;
 
             AnanasValue macro_node = {
                 .type = AnanasValueType_Macro,
