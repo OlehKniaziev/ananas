@@ -14,6 +14,9 @@ int main() {
     AnanasEnvInit(&env, NULL, arena_allocator);
     AnanasRootEnvPopulate(&env);
 
+    AnanasReaderTable reader_table;
+    AnanasReaderTableInit(&reader_table, arena_allocator);
+
     while (1) {
         U8 backing_error_buffer[1024];
         HeliosStringView error_buffer = {.data = backing_error_buffer, .count = sizeof(backing_error_buffer)};
@@ -37,8 +40,11 @@ int main() {
         AnanasLexerInit(&lexer, &source);
 
         AnanasValue node;
-        if (!AnanasReaderNext(&lexer, &arena, &node, &error_ctx)) {
-            printf("Reader error: " HELIOS_SV_FMT "\n", HELIOS_SV_ARG(error_ctx.error_buffer));
+        if (!AnanasReaderNext(&lexer, &reader_table, &arena, &node, &error_ctx)) {
+            if (!error_ctx.ok) {
+                printf("Reader error: " HELIOS_SV_FMT "\n", HELIOS_SV_ARG(error_ctx.error_buffer));
+            }
+
             continue;
         }
 

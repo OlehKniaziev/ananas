@@ -37,4 +37,20 @@ static inline UZ AnanasAlignForward(UZ x, UZ align) {
     return x + (align - ((x & (align - 1)) & (align - 1)));
 }
 
+static inline U64 AnanasFnv1Hash(HeliosStringView sv) {
+    const U64 fnv_offset_basis = 0xCBF29CE484222325;
+    const U64 fnv_prime = 0x100000001B3;
+
+    U64 hash = fnv_offset_basis;
+
+    for (UZ i = 0; i < sv.count; ++i) {
+        hash *= fnv_prime;
+
+        U8 byte = sv.data[i];
+        hash ^= (U64)byte;
+    }
+
+    return hash;
+}
+
 #endif // ANANAS_COMMON_H_

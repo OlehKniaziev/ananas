@@ -3,6 +3,18 @@
 
 #include "value.h"
 
-B32 AnanasReaderNext(AnanasLexer *lexer, AnanasArena *arena, AnanasValue *node, AnanasErrorContext *error_ctx);
+ERMIS_DECL_HASHMAP(HeliosStringView, AnanasMacro *, AnanasReaderMacroTable)
+
+typedef struct {
+    AnanasReaderMacroTable reader_macros;
+} AnanasReaderTable;
+
+void AnanasReaderTableInit(AnanasReaderTable *, HeliosAllocator);
+
+B32 AnanasReaderNext(AnanasLexer *lexer,
+                     AnanasReaderTable *table,
+                     AnanasArena *arena,
+                     AnanasValue *node,
+                     AnanasErrorContext *error_ctx);
 
 #endif // ANANAS_READER_H_

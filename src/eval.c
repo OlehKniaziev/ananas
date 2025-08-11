@@ -1,22 +1,6 @@
 #include "eval.h"
 
-static U64 Fnv1Hash(HeliosStringView sv) {
-    const U64 fnv_offset_basis = 0xCBF29CE484222325;
-    const U64 fnv_prime = 0x100000001B3;
-
-    U64 hash = fnv_offset_basis;
-
-    for (UZ i = 0; i < sv.count; ++i) {
-        hash *= fnv_prime;
-
-        U8 byte = sv.data[i];
-        hash ^= (U64)byte;
-    }
-
-    return hash;
-}
-
-ERMIS_IMPL_HASHMAP(HeliosStringView, AnanasValue, AnanasEnvMap, HeliosStringViewEqual, Fnv1Hash)
+ERMIS_IMPL_HASHMAP(HeliosStringView, AnanasValue, AnanasEnvMap, HeliosStringViewEqual, AnanasFnv1Hash)
 
 static B32 AnanasEnvLookup(AnanasEnv *env, HeliosStringView name, AnanasValue *node) {
     while (env != NULL) {
@@ -173,13 +157,13 @@ static B32 AnanasEvalFunctionWithArgumentList(AnanasFunction *function,
                               result);
 }
 
-static B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
-                                           AnanasToken where,
-                                           AnanasList *args_list,
-                                           AnanasArena *arena,
-                                           AnanasEnv *env,
-                                           AnanasErrorContext *error_ctx,
-                                           AnanasValue *result) {
+B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
+                                    AnanasToken where,
+                                    AnanasList *args_list,
+                                    AnanasArena *arena,
+                                    AnanasEnv *env,
+                                    AnanasErrorContext *error_ctx,
+                                    AnanasValue *result) {
     HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
 
     if (macro->is_native) {
@@ -284,42 +268,6 @@ static const char *AnanasTypeName(AnanasValueType type) {
     case AnanasValueType_Symbol:   return "symbol";
     }
 }
-
-#define ANANAS_NATIVE_BAIL_FMT(fmt, ...) do {                          \
-        AnanasErrorContextMessage(error_ctx,                            \
-                                  where.row,                            \
-                                  where.col,                            \
-                                  fmt,                                  \
-                                  __VA_ARGS__);                         \
-        return 0;                                                       \
-    } while (0)
-
-#define ANANAS_NATIVE_BAIL(msg)  do {          \
-        AnanasErrorContextMessage(error_ctx,    \
-                                  where.row,    \
-                                  where.col,    \
-                                  msg);         \
-        return 0;                               \
-    } while (0)
-
-#define ANANAS_CHECK_ARGS_COUNT(n) do {                                 \
-        if (args.count != (n)) {                                        \
-            ANANAS_NATIVE_BAIL_FMT("Argument count mismatch: expected %d but got %zu instead", \
-                                    (n),                                \
-                                    args.count);                        \
-        }                                                               \
-    } while (0)
-
-#define ANANAS_CHECK_ARG_TYPE(n, arg_type, name)                        \
-    AnanasValue name##_arg = AnanasArgAt(args, (n));                    \
-    if (name##_arg.type != AnanasValueType_##arg_type) {                \
-        ANANAS_NATIVE_BAIL_FMT("Argument type mismatch: expected the '" #name "' argument at position %d to be of type %s but got type %s instead", \
-                                (n),                                    \
-                                AnanasTypeName(AnanasValueType_##arg_type), \
-                                AnanasTypeName(name##_arg.type));       \
-    }
-
-#define ANANAS_NATIVE_RETURN(value) do { *result = (value); return 1; } while (0)
 
 ANANAS_DEFINE_NATIVE_FUNCTION(AnanasCons) {
     ANANAS_CHECK_ARGS_COUNT(2);

@@ -67,6 +67,45 @@ static inline AnanasValue AnanasArgAt(AnanasArgs args, UZ idx) {
     AnanasValue *result)
 #define ANANAS_DEFINE_NATIVE_FUNCTION ANANAS_DECLARE_NATIVE_FUNCTION
 
+#define ANANAS_DECLARE_NATIVE_MACRO ANANAS_DECLARE_NATIVE_FUNCTION
+#define ANANAS_DEFINE_NATIVE_MACRO ANANAS_DECLARE_NATIVE_MACRO
+
+#define ANANAS_NATIVE_BAIL_FMT(fmt, ...) do {                          \
+        AnanasErrorContextMessage(error_ctx,                            \
+                                  where.row,                            \
+                                  where.col,                            \
+                                  fmt,                                  \
+                                  __VA_ARGS__);                         \
+        return 0;                                                       \
+    } while (0)
+
+#define ANANAS_NATIVE_BAIL(msg)  do {          \
+        AnanasErrorContextMessage(error_ctx,    \
+                                  where.row,    \
+                                  where.col,    \
+                                  msg);         \
+        return 0;                               \
+    } while (0)
+
+#define ANANAS_CHECK_ARGS_COUNT(n) do {                                 \
+        if (args.count != (n)) {                                        \
+            ANANAS_NATIVE_BAIL_FMT("Argument count mismatch: expected %d but got %zu instead", \
+                                    (n),                                \
+                                    args.count);                        \
+        }                                                               \
+    } while (0)
+
+#define ANANAS_CHECK_ARG_TYPE(n, arg_type, name)                        \
+    AnanasValue name##_arg = AnanasArgAt(args, (n));                    \
+    if (name##_arg.type != AnanasValueType_##arg_type) {                \
+        ANANAS_NATIVE_BAIL_FMT("Argument type mismatch: expected the '" #name "' argument at position %d to be of type %s but got type %s instead", \
+                                (n),                                    \
+                                AnanasTypeName(AnanasValueType_##arg_type), \
+                                AnanasTypeName(name##_arg.type));       \
+    }
+
+#define ANANAS_NATIVE_RETURN(value) do { *result = (value); return 1; } while (0)
+
 typedef B32 (*AnanasNativeFunction)(AnanasArgs args,
                                     AnanasToken where,
                                     AnanasArena *arena,

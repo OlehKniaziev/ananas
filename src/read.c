@@ -1,4 +1,5 @@
 #include "read.h"
+#include "eval.h"
 
 static const char *token_type_str_table[] = {
 #define X(t) #t,
@@ -6,33 +7,90 @@ static const char *token_type_str_table[] = {
 #undef X
 };
 
-B32 AnanasReaderNext(AnanasLexer *lexer, AnanasArena *arena, AnanasValue *node, AnanasErrorContext *error_ctx) {
+#define ANANAS_ENUM_READER_MACROS \
+    X("`", AnanasGraveMacro) \
+    X(",", AnanasUnquoteMacro)
+
+#define X(_name, proc) ANANAS_DECLARE_NATIVE_MACRO(proc);
+ANANAS_ENUM_READER_MACROS
+#undef X
+
+ANANAS_DECLARE_NATIVE_MACRO(AnanasGraveMacro) {
+    ANANAS_CHECK_ARGS_COUNT(1);
+
+    AnanasList *results_list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+    results_list->car.type = AnanasValueType_Symbol;
+    results_list->car.u.symbol = HELIOS_SV_LIT("quote");
+
+    results_list->cdr = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+    results_list->cdr->car = AnanasArgAt(args, 0);
+
+    result->type = AnanasValueType_List;
+    result->u.list = results_list;
+    return 1;
+}
+
+ANANAS_DECLARE_NATIVE_MACRO(AnanasUnquoteMacro) {
+    ANANAS_CHECK_ARGS_COUNT(1);
+
+    AnanasList *results_list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+    results_list->car.type = AnanasValueType_Symbol;
+    results_list->car.u.symbol = HELIOS_SV_LIT("unquote");
+
+    results_list->cdr = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+    results_list->cdr->car = AnanasArgAt(args, 0);
+
+    result->type = AnanasValueType_List;
+    result->u.list = results_list;
+    return 1;
+}
+
+ERMIS_IMPL_HASHMAP(HeliosStringView, AnanasMacro *, AnanasReaderMacroTable, HeliosStringViewEqual, AnanasFnv1Hash)
+
+void AnanasReaderTableInit(AnanasReaderTable *table, HeliosAllocator allocator) {
+    AnanasReaderMacroTableInit(&table->reader_macros, allocator, 30);
+
+#define X(name, macro_proc) { \
+    AnanasMacro *macro = HeliosAlloc(allocator, sizeof(AnanasMacro)); \
+    macro->is_native = 1; \
+    macro->u.native = (macro_proc); \
+    AnanasReaderMacroTableInsert(&table->reader_macros, HELIOS_SV_LIT((name)), macro); \
+    }
+ANANAS_ENUM_READER_MACROS
+#undef X
+}
+
+B32 AnanasReaderNext(AnanasLexer *lexer,
+                     AnanasReaderTable *table,
+                     AnanasArena *arena,
+                     AnanasValue *result,
+                     AnanasErrorContext *error_ctx) {
     AnanasToken token;
     if (!AnanasLexerNext(lexer, &token)) return 0;
 
     switch (token.type) {
     case AnanasTokenType_Int: {
-        HELIOS_ASSERT(HeliosParseS64DetectBase(token.value, &node->u.integer));
-        node->type = AnanasValueType_Int;
-        node->token = token;
+        HELIOS_ASSERT(HeliosParseS64DetectBase(token.value, &result->u.integer));
+        result->type = AnanasValueType_Int;
+        result->token = token;
         return 1;
     }
     case AnanasTokenType_String: {
-        node->type = AnanasValueType_String;
-        node->u.string = token.value;
-        node->token = token;
+        result->type = AnanasValueType_String;
+        result->u.string = token.value;
+        result->token = token;
         return 1;
     }
     case AnanasTokenType_Symbol: {
-        node->type = AnanasValueType_Symbol;
-        node->u.symbol = token.value;
-        node->token = token;
+        result->type = AnanasValueType_Symbol;
+        result->u.symbol = token.value;
+        result->token = token;
         return 1;
     }
     case AnanasTokenType_LeftParen: {
         AnanasList *result_list = NULL;
         AnanasList *list = result_list;
-        node->token = token;
+        result->token = token;
 
         while (1) {
             AnanasLexer prev_lexer = *lexer;
@@ -50,7 +108,7 @@ B32 AnanasReaderNext(AnanasLexer *lexer, AnanasArena *arena, AnanasValue *node, 
             *lexer->contents = prev_contents;
 
             AnanasList *list_car = ANANAS_ARENA_PUSH_ZERO(arena, sizeof(AnanasList));
-            if (!AnanasReaderNext(lexer, arena, &list_car->car, error_ctx)) {
+            if (!AnanasReaderNext(lexer, table, arena, &list_car->car, error_ctx)) {
                 HELIOS_ASSERT(!error_ctx->ok);
                 return 0;
             }
@@ -64,10 +122,34 @@ B32 AnanasReaderNext(AnanasLexer *lexer, AnanasArena *arena, AnanasValue *node, 
             }
         }
 
-        node->type = AnanasValueType_List;
-        node->u.list = result_list;
+        result->type = AnanasValueType_List;
+        result->u.list = result_list;
 
         return 1;
+    }
+    case AnanasTokenType_ReaderMacro: {
+        AnanasMacro *reader_macro = NULL;
+
+        if (!AnanasReaderMacroTableFind(&table->reader_macros, token.value, &reader_macro)) {
+            AnanasErrorContextMessage(error_ctx,
+                                      token.row,
+                                      token.col,
+                                      "undefined reader macro '" HELIOS_SV_FMT "'",
+                                      HELIOS_SV_ARG(token.value));
+            return 0;
+        }
+
+        AnanasList *macro_arg = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+
+        if (!AnanasReaderNext(lexer, table, arena, &macro_arg->car, error_ctx)) return 0;
+
+        return AnanasEvalMacroWithArgumentList(reader_macro,
+                                               token,
+                                               macro_arg,
+                                               arena,
+                                               NULL,
+                                               error_ctx,
+                                               result);
     }
     default: {
         const char *token_type_str = token_type_str_table[token.type];
