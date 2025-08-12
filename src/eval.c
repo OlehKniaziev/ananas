@@ -695,6 +695,47 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
             *result = var_value;
 
             return 1;
+        } else if (HeliosStringViewEqualCStr(sym_name, "set")) {
+            AnanasList *args_list = list->cdr;
+            if (args_list == NULL) {
+                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "no arguments passed to 'set'");
+                return 0;
+            }
+
+            if (args_list->cdr == NULL) {
+                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "no variable value passed to 'set'");
+                return 0;
+            }
+
+            AnanasValue variable_name_value = args_list->car;
+            if (variable_name_value.type != AnanasValueType_Symbol) {
+                AnanasErrorContextMessage(error_ctx,
+                                          node.token.row,
+                                          node.token.col,
+                                          "'set' form expects the first argument to by a symbol, got %s instead",
+                                          AnanasTypeName(variable_name_value.type));
+                return 0;
+            }
+
+            HeliosStringView variable_name = variable_name_value.u.symbol;
+
+            AnanasValue variable_value;
+            if (!AnanasEnvLookup(env, variable_name, &variable_value)) {
+                AnanasErrorContextMessage(error_ctx,
+                                          node.token.row,
+                                          node.token.col,
+                                          "symbol '" HELIOS_SV_FMT "' is not bound in this scope",
+                                          HELIOS_SV_ARG(variable_name));
+                return 0;
+            }
+
+            AnanasValue new_variable_value_given = args_list->cdr->car;
+            AnanasValue new_variable_value;
+            if (!AnanasEval(new_variable_value_given, arena, env, &new_variable_value, error_ctx)) return 0;
+
+            AnanasEnvMapInsert(&env->map, variable_name, new_variable_value);
+            *result = new_variable_value;
+            return 1;
         } else if (HeliosStringViewEqualCStr(sym_name, "if")) {
             AnanasList *args_list = list->cdr;
 
