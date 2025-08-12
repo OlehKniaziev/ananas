@@ -49,9 +49,11 @@ HeliosStringView AnanasPrint(HeliosAllocator allocator, AnanasValue node) {
         AnanasList *list = node.u.list;
         while (list != NULL) {
             HeliosStringView car = AnanasPrint(allocator, list->car);
-            if (car.count + offset + 1 >= buffer_cap) {
-                buffer = HeliosRealloc(allocator, buffer, buffer_cap, buffer_cap * 2);
-                buffer_cap *= 2;
+            UZ bytes_needed = car.count + offset + 1;
+            if (bytes_needed >= buffer_cap) {
+                UZ new_buffer_cap = bytes_needed > buffer_cap * 2 ? bytes_needed : buffer_cap * 2;
+                buffer = HeliosRealloc(allocator, buffer, buffer_cap, new_buffer_cap);
+                buffer_cap = new_buffer_cap;
             }
 
             for (UZ i = 0; i < car.count; ++i) {
