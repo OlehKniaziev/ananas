@@ -1,4 +1,5 @@
 #include "eval.h"
+#include "print.h"
 
 ERMIS_IMPL_HASHMAP(HeliosStringView, AnanasValue, AnanasEnvMap, HeliosStringViewEqual, AnanasFnv1Hash)
 
@@ -24,7 +25,8 @@ void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator alloca
     X("cdr", AnanasCdr) \
     X("string-split", AnanasStringSplit) \
     X("concat", AnanasConcat) \
-    X("substring", AnanasSubstring)
+    X("substring", AnanasSubstring) \
+    X("print", AnanasPrintBuiltin)
 
 #define X(name, func) ANANAS_DECLARE_NATIVE_FUNCTION(func);
 ANANAS_ENUM_NATIVE_FUNCTIONS
@@ -472,6 +474,17 @@ ANANAS_DEFINE_NATIVE_FUNCTION(AnanasSubstring) {
     result->u.string.data = &string.data[substring_start];
     result->u.string.count = substring_count;
     return 1;
+}
+
+ANANAS_DECLARE_NATIVE_FUNCTION(AnanasPrintBuiltin) {
+    ANANAS_CHECK_ARGS_COUNT(1);
+
+    AnanasValue value = AnanasArgAt(args, 0);
+
+    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
+    HeliosStringView string = AnanasPrint(arena_allocator, value);
+    printf(HELIOS_SV_FMT "\n", HELIOS_SV_ARG(string));
+    ANANAS_NATIVE_RETURN(value);
 }
 
 static B32 AnanasUnquoteForm(AnanasValue *value,
