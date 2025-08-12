@@ -9,8 +9,12 @@ static B32 AnanasIsReaderMacroChar(HeliosChar c) {
            c == '\'';
 }
 
-static B32 AnanasIsSymbolChar(HeliosChar c) {
+static B32 AnanasIsFirstSymbolChar(HeliosChar c) {
     return HeliosCharIsAlpha(c) || c == '-' || c == '_' || c == '/' || c == '+' || c == '*' || c == '=' || c == '!' || c == '?';
+}
+
+static B32 AnanasIsSymbolChar(HeliosChar c) {
+    return AnanasIsFirstSymbolChar(c) || HeliosCharIsDigit(c);
 }
 
 #define ANANAS_LEXER_READ_WHILE(pred) while (1) {                       \
@@ -90,7 +94,7 @@ B32 AnanasLexerNext(AnanasLexer *lexer, AnanasToken *token) {
         token->row = lexer->row;
         UZ start = lexer->contents->byte_offset;
 
-        if (AnanasIsSymbolChar(cur_char)) {
+        if (AnanasIsFirstSymbolChar(cur_char)) {
             token->type = AnanasTokenType_Symbol;
 
             ANANAS_LEXER_READ_WHILE(AnanasIsSymbolChar);
