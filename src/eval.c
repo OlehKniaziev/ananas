@@ -26,7 +26,8 @@ void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator alloca
     X("string-split", AnanasStringSplit) \
     X("concat", AnanasConcat) \
     X("substring", AnanasSubstring) \
-    X("print", AnanasPrintBuiltin)
+    X("print", AnanasPrintBuiltin) \
+    X("read", AnanasRead)
 
 #define X(name, func) ANANAS_DECLARE_NATIVE_FUNCTION(func);
 ANANAS_ENUM_NATIVE_FUNCTIONS
@@ -485,6 +486,48 @@ ANANAS_DECLARE_NATIVE_FUNCTION(AnanasPrintBuiltin) {
     HeliosStringView string = AnanasPrint(arena_allocator, value);
     printf(HELIOS_SV_FMT "\n", HELIOS_SV_ARG(string));
     ANANAS_NATIVE_RETURN(value);
+}
+
+ANANAS_DECLARE_NATIVE_FUNCTION(AnanasRead) {
+    ANANAS_CHECK_ARGS_COUNT(1);
+
+    ANANAS_CHECK_ARG_TYPE(0, String, source);
+
+    HeliosStringView source = source_arg.u.string;
+
+    HeliosString8Stream source_stream;
+    HeliosString8StreamInit(&source_stream, source.data, source.count);
+
+    AnanasLexer lexer;
+    AnanasLexerInit(&lexer, &source_stream);
+
+    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
+
+    AnanasReaderTable reader_table;
+    AnanasReaderTableInit(&reader_table, arena_allocator);
+
+    AnanasList *result_list = NULL;
+    AnanasList *current_list = result_list;
+
+    AnanasValue read_result;
+    while (AnanasReaderNext(&lexer, &reader_table, arena, &read_result, error_ctx)) {
+        AnanasList *list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+        list->car = read_result;
+
+        if (result_list == NULL) {
+            result_list = list;
+            current_list = list;
+        } else {
+            current_list->cdr = list;
+            current_list = list;
+        }
+    }
+
+    if (!error_ctx->ok) return 0;
+
+    result->type = AnanasValueType_List;
+    result->u.list = result_list;
+    return 1;
 }
 
 static B32 AnanasUnquoteForm(AnanasValue *value,
