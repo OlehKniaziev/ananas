@@ -27,7 +27,8 @@ void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator alloca
     X("concat", AnanasConcat) \
     X("substring", AnanasSubstring) \
     X("print", AnanasPrintBuiltin) \
-    X("read", AnanasRead)
+    X("read", AnanasRead) \
+    X("=", AnanasEqualBuiltin)
 
 #define X(name, func) ANANAS_DECLARE_NATIVE_FUNCTION(func);
 ANANAS_ENUM_NATIVE_FUNCTIONS
@@ -527,6 +528,51 @@ ANANAS_DECLARE_NATIVE_FUNCTION(AnanasRead) {
 
     result->type = AnanasValueType_List;
     result->u.list = result_list;
+    return 1;
+}
+
+static B32 AnanasEqual(AnanasValue lhs, AnanasValue rhs) {
+    if (lhs.type != rhs.type) return 0;
+
+    switch (lhs.type) {
+    case AnanasValueType_Int: return lhs.u.integer == rhs.u.integer;
+    case AnanasValueType_Bool: return lhs.u.boolean == rhs.u.boolean;
+    case AnanasValueType_String: return HeliosStringViewEqual(lhs.u.string, rhs.u.string);
+    case AnanasValueType_Function: return lhs.u.function == rhs.u.function;
+    case AnanasValueType_Macro: return lhs.u.macro == rhs.u.macro;
+    case AnanasValueType_Symbol: return HeliosStringViewEqual(lhs.u.symbol, rhs.u.symbol);
+    case AnanasValueType_List: {
+        AnanasList *lhs_list = lhs.u.list;
+        AnanasList *rhs_list = rhs.u.list;
+
+        while (lhs_list != NULL) {
+            if (rhs_list == NULL) return 0;
+
+            AnanasValue lhs_car = lhs_list->car;
+            AnanasValue rhs_car = rhs_list->car;
+            if (!AnanasEqual(lhs_car, rhs_car)) return 0;
+
+            lhs_list = lhs_list->cdr;
+            rhs_list = rhs_list->cdr;
+        }
+
+        return rhs_list == NULL;
+    }
+    }
+
+    HELIOS_UNREACHABLE();
+}
+
+ANANAS_DECLARE_NATIVE_FUNCTION(AnanasEqualBuiltin) {
+    (void) arena;
+
+    ANANAS_CHECK_ARGS_COUNT(2);
+
+    AnanasValue lhs = AnanasArgAt(args, 0);
+    AnanasValue rhs = AnanasArgAt(args, 1);
+
+    result->type = AnanasValueType_Bool;
+    result->u.boolean = AnanasEqual(lhs, rhs);
     return 1;
 }
 
