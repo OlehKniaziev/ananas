@@ -196,9 +196,9 @@ B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
             AnanasErrorContextMessage(error_ctx,
                                       where.row,
                                       where.col,
-                                      "Too many arguments for macro call: expected '%zu', got %zu instead",
-                                      args_count,
-                                      user_macro.params.count);
+                                      "too many arguments for macro call: expected %zu, got %zu instead",
+                                      user_macro.params.count,
+                                      args_count + 1);
             return 0;
         }
 
