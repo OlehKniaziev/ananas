@@ -716,6 +716,18 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
 
             *result = falsy_node;
             return 1;
+        } else if (HeliosStringViewEqualCStr(sym_name, "do")) {
+            AnanasList *args_list = list->cdr;
+
+            AnanasValue do_result = ANANAS_FALSE;
+            while (args_list != NULL) {
+                AnanasValue form = args_list->car;
+                if (!AnanasEval(form, arena, env, &do_result, error_ctx)) return 0;
+                args_list = args_list->cdr;
+            }
+
+            *result = do_result;
+            return 1;
         } else if (HeliosStringViewEqualCStr(sym_name, "let")) {
             AnanasList *args_list = list->cdr;
             if (args_list == NULL) {
