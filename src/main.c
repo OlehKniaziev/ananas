@@ -21,7 +21,7 @@ static void AnanasEvalFile(AnanasArena *arena, HeliosStringView file_path) {
 
     U8 backing_error_buffer[1024];
     HeliosStringView error_buffer = {.data = backing_error_buffer, .count = sizeof(backing_error_buffer)};
-    AnanasErrorContext error_ctx = {.ok = 1, .place = HELIOS_SV_LIT("repl"), .error_buffer = error_buffer};
+    AnanasErrorContext error_ctx = {.ok = 1, .place = file_path, .error_buffer = error_buffer};
 
     AnanasReaderTable reader_table;
     AnanasReaderTableInit(&reader_table, allocator);
