@@ -226,7 +226,7 @@ B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
                             arena,
                             &call_env,
                             error_ctx,
-                            &macro_result)) return 1;
+                            &macro_result)) return 0;
     return AnanasEval(macro_result, arena, env, result, error_ctx);
 }
 
@@ -576,39 +576,66 @@ ANANAS_DECLARE_NATIVE_FUNCTION(AnanasEqualBuiltin) {
     return 1;
 }
 
-static B32 AnanasUnquoteForm(AnanasValue *value,
+static B32 AnanasUnquoteForm(AnanasValue value,
                              AnanasArena *arena,
                              AnanasEnv *env,
-                             AnanasErrorContext *error_ctx) {
-    if (value->type != AnanasValueType_List) return 1;
+                             AnanasErrorContext *error_ctx,
+                             AnanasValue *result) {
+    if (value.type != AnanasValueType_List || value.u.list == NULL) {
+        *result = value;
+        return 1;
+    }
 
-    AnanasList *list = value->u.list;
+    AnanasList *list = value.u.list;
     AnanasList *current_list = list;
 
+    AnanasList *unquoted_list = NULL;
+    AnanasList *current_unquoted_list = unquoted_list;
+
     while (current_list != NULL) {
-        if (!AnanasUnquoteForm(&current_list->car, arena, env, error_ctx)) return 0;
+        AnanasValue unquote_result;
+        if (!AnanasUnquoteForm(current_list->car, arena, env, error_ctx, &unquote_result)) return 0;
+
+        AnanasList *unquote_result_list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+        unquote_result_list->car = unquote_result;
+
+        if (unquoted_list == NULL) {
+            unquoted_list = unquote_result_list;
+            current_unquoted_list = unquoted_list;
+        } else {
+            current_unquoted_list->cdr = unquote_result_list;
+            current_unquoted_list = unquote_result_list;
+        }
+
         current_list = current_list->cdr;
     }
 
-    if (list == NULL) return 1;
-    if (list->car.type != AnanasValueType_Symbol) return 1;
+    if (list->car.type != AnanasValueType_Symbol) {
+        result->type = AnanasValueType_List;
+        result->u.list = unquoted_list;
+        return 1;
+    }
 
     HeliosStringView car_symbol = list->car.u.symbol;
-    if (!HeliosStringViewEqualCStr(car_symbol, "unquote")) return 1;
+    if (!HeliosStringViewEqualCStr(car_symbol, "unquote")) {
+        result->type = AnanasValueType_List;
+        result->u.list = unquoted_list;
+        return 1;
+    }
 
-    AnanasList *unquote_args = list->cdr;
+    AnanasList *unquote_args = unquoted_list->cdr;
     if (unquote_args == NULL) {
-        AnanasErrorContextMessage(error_ctx, value->token.row, value->token.col, "no argument passed to 'unquote' form");
+        AnanasErrorContextMessage(error_ctx, value.token.row, value.token.col, "no argument passed to 'unquote' form");
         return 0;
     }
 
     if (unquote_args->cdr != NULL) {
-        AnanasErrorContextMessage(error_ctx, value->token.row, value->token.col, "'unquote' form expects exactly one argument");
+        AnanasErrorContextMessage(error_ctx, value.token.row, value.token.col, "'unquote' form expects exactly one argument");
         return 0;
     }
 
     AnanasValue form = unquote_args->car;
-    return AnanasEval(form, arena, env, value, error_ctx);
+    return AnanasEval(form, arena, env, result, error_ctx);
 }
 
 B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue *result, AnanasErrorContext *error_ctx) {
@@ -954,8 +981,7 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
             }
 
             AnanasValue form = args_list->car;
-            if (!AnanasUnquoteForm(&form, arena, env, error_ctx)) return 0;
-            *result = form;
+            if (!AnanasUnquoteForm(form, arena, env, error_ctx, result)) return 0;
             return 1;
         } else if (HeliosStringViewEqualCStr(sym_name, "unquote")) {
             AnanasList *args_list = list->cdr;
