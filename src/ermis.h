@@ -70,7 +70,17 @@
                                                                         \
     void hashmapname##Init(hashmapname *map, HeliosAllocator allocator, UZ cap); \
     B32 hashmapname##Insert(hashmapname *map, K key, V value);          \
-    B32 hashmapname##Find(hashmapname *map, K key, V *value);           \
+    V *hashmapname##FindPtr(hashmapname *map, K key);                   \
+                                                                        \
+    HELIOS_INLINE B32 hashmapname##Find(hashmapname *map, K key, V *value) { \
+        V *found_ptr = hashmapname##FindPtr(map, key);                  \
+        if (found_ptr == NULL) {                                        \
+            return 0;                                                   \
+        } else {                                                        \
+            *value = *found_ptr;                                        \
+            return 1;                                                   \
+        }                                                               \
+    }                                                                   \
                                                                         \
     HELIOS_INLINE void hashmapname##Free(hashmapname *map) {            \
         HeliosFree(map->allocator, map->keys, sizeof(K) * map->capacity); \
@@ -138,14 +148,13 @@
         } while (1);                                                    \
     }                                                                   \
                                                                         \
-    B32 hashmapname##Find(hashmapname *map, K key, V *value) {          \
+    V *hashmapname##FindPtr(hashmapname *map, K key) {                  \
         U64 idx = hashfunc(key) % map->capacity;                        \
         U64 start_idx = idx;                                            \
                                                                         \
         do {                                                            \
             if ((map->meta[idx] & ERMIS_HASH_OCCUPIED) && eqfunc(key, map->keys[idx])) { \
-                *value = map->values[idx];                              \
-                return 1;                                               \
+                return &map->values[idx];                               \
             }                                                           \
                                                                         \
             ++idx;                                                      \
@@ -153,7 +162,7 @@
             if (idx > map->capacity) idx = 0;                           \
         } while (idx != start_idx);                                     \
                                                                         \
-        return 0;                                                       \
+        return NULL;                                                    \
     }
 
 // Equality and hash functions

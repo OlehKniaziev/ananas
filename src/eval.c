@@ -3,13 +3,14 @@
 
 ERMIS_IMPL_HASHMAP(HeliosStringView, AnanasValue, AnanasEnvMap, HeliosStringViewEqual, AnanasFnv1Hash)
 
-static B32 AnanasEnvLookup(AnanasEnv *env, HeliosStringView name, AnanasValue *node) {
+static AnanasValue *AnanasEnvLookup(AnanasEnv *env, HeliosStringView name) {
     while (env != NULL) {
-        if (AnanasEnvMapFind(&env->map, name, node)) return 1;
+        AnanasValue *ptr = AnanasEnvMapFindPtr(&env->map, name);
+        if (ptr != NULL) return ptr;
         env = env->parent_env;
     }
 
-    return 0;
+    return NULL;
 }
 
 void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator allocator) {
@@ -649,7 +650,8 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
         return 1;
     }
     case AnanasValueType_Symbol: {
-        if (!AnanasEnvLookup(env, node.u.symbol, result)) {
+        AnanasValue *symbol_value = AnanasEnvLookup(env, node.u.symbol);
+        if (symbol_value == NULL) {
             AnanasErrorContextMessage(error_ctx,
                                       node.token.row,
                                       node.token.col,
@@ -658,6 +660,7 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
             return 0;
         }
 
+        *result = *symbol_value;
         return 1;
     }
     case AnanasValueType_List: {
@@ -746,8 +749,8 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
 
             HeliosStringView variable_name = variable_name_value.u.symbol;
 
-            AnanasValue variable_value;
-            if (!AnanasEnvLookup(env, variable_name, &variable_value)) {
+            AnanasValue *variable_value = AnanasEnvLookup(env, variable_name);
+            if (variable_value == NULL) {
                 AnanasErrorContextMessage(error_ctx,
                                           node.token.row,
                                           node.token.col,
@@ -757,11 +760,12 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
             }
 
             AnanasValue new_variable_value_given = args_list->cdr->car;
+            // NOTE(oleh): Could just pass the `variable_value` pointer to the eval call ahead, but
+            // i don't want to make any guarantees about not modifying the result parameter on error.
             AnanasValue new_variable_value;
             if (!AnanasEval(new_variable_value_given, arena, env, &new_variable_value, error_ctx)) return 0;
-
-            AnanasEnvMapInsert(&env->map, variable_name, new_variable_value);
-            *result = new_variable_value;
+            *variable_value = new_variable_value;
+            *result = *variable_value;
             return 1;
         } else if (HeliosStringViewEqualCStr(sym_name, "if")) {
             AnanasList *args_list = list->cdr;
@@ -1050,8 +1054,8 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
             *result = macro_node;
             return 1;
         } else {
-            AnanasValue callable_node;
-            if (!AnanasEnvLookup(env, sym_name, &callable_node)) {
+            AnanasValue *callable_node = AnanasEnvLookup(env, sym_name);
+            if (callable_node == NULL) {
                 AnanasToken token = list->car.token;
                 AnanasErrorContextMessage(error_ctx,
                                           token.row,
@@ -1061,8 +1065,8 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
                 return 0;
             }
 
-            if (callable_node.type == AnanasValueType_Function) {
-                AnanasFunction *function = callable_node.u.function;
+            if (callable_node->type == AnanasValueType_Function) {
+                AnanasFunction *function = callable_node->u.function;
                 return AnanasEvalFunctionWithArgumentList(function,
                                                           list->cdr,
                                                           node.token,
@@ -1070,8 +1074,8 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
                                                           env,
                                                           error_ctx,
                                                           result);
-            } else if (callable_node.type == AnanasValueType_Macro) {
-                AnanasMacro *macro = callable_node.u.macro;
+            } else if (callable_node->type == AnanasValueType_Macro) {
+                AnanasMacro *macro = callable_node->u.macro;
                 return AnanasEvalMacroWithArgumentList(macro,
                                                        node.token,
                                                        list->cdr,
