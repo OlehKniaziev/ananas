@@ -29,7 +29,8 @@ void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator alloca
     X("substring", AnanasSubstring) \
     X("print", AnanasPrintBuiltin) \
     X("read", AnanasRead) \
-    X("=", AnanasEqualBuiltin)
+    X("=", AnanasEqualBuiltin) \
+    X("type", AnanasType)
 
 #define X(name, func) ANANAS_DECLARE_NATIVE_FUNCTION(func);
 ANANAS_ENUM_NATIVE_FUNCTIONS
@@ -574,6 +575,18 @@ ANANAS_DECLARE_NATIVE_FUNCTION(AnanasEqualBuiltin) {
 
     result->type = AnanasValueType_Bool;
     result->u.boolean = AnanasEqual(lhs, rhs);
+    return 1;
+}
+
+ANANAS_DECLARE_NATIVE_FUNCTION(AnanasType) {
+    (void) arena;
+
+    ANANAS_CHECK_ARGS_COUNT(1);
+
+    AnanasValue arg = AnanasArgAt(args, 0);
+    const char *type_name = AnanasTypeName(arg.type);
+    result->type = AnanasValueType_Symbol;
+    result->u.symbol = HELIOS_SV_LIT(type_name);
     return 1;
 }
 
