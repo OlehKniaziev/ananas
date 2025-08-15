@@ -10,7 +10,16 @@ static B32 AnanasIsReaderMacroChar(HeliosChar c) {
 }
 
 static B32 AnanasIsFirstSymbolChar(HeliosChar c) {
-    return HeliosCharIsAlpha(c) || c == '-' || c == '_' || c == '/' || c == '+' || c == '*' || c == '=' || c == '!' || c == '?';
+    return HeliosCharIsAlpha(c)
+           || c == '-'
+           || c == '_'
+           || c == '/'
+           || c == '+'
+           || c == '*'
+           || c == '='
+           || c == '!'
+           || c == '?'
+           || c == '.';
 }
 
 static B32 AnanasIsSymbolChar(HeliosChar c) {
