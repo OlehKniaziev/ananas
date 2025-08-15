@@ -129,9 +129,9 @@ static B32 AnanasEvalFunctionWithArgumentList(AnanasFunction *function,
             AnanasErrorContextMessage(error_ctx,
                                       where.row,
                                       where.col,
-                                      "Too many arguments: expected %zu, got %zu",
+                                      "too many arguments: expected %zu, got %zu",
                                       user_function.params.count,
-                                      arguments_count);
+                                      arguments_count + 1);
             return 0;
         }
 
@@ -149,7 +149,7 @@ static B32 AnanasEvalFunctionWithArgumentList(AnanasFunction *function,
         AnanasErrorContextMessage(error_ctx,
                                   where.row,
                                   where.col,
-                                  "Not enough arguments: expected %zu, got %zu",
+                                  "not enough arguments: expected %zu, got %zu",
                                   user_function.params.count,
                                   arguments_count);
         return 0;
