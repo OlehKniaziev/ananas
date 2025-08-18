@@ -147,7 +147,6 @@ B32 AnanasReaderNext(AnanasLexer *lexer,
                                                token,
                                                macro_arg,
                                                arena,
-                                               NULL,
                                                error_ctx,
                                                result);
     }

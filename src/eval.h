@@ -18,7 +18,6 @@ B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
                                     AnanasToken where,
                                     AnanasList *args_list,
                                     AnanasArena *arena,
-                                    AnanasEnv *env,
                                     AnanasErrorContext *error_ctx,
                                     AnanasValue *result);
 

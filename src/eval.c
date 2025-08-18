@@ -223,7 +223,6 @@ B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
                                     AnanasToken where,
                                     AnanasList *args_list,
                                     AnanasArena *arena,
-                                    AnanasEnv *env,
                                     AnanasErrorContext *error_ctx,
                                     AnanasValue *result) {
     HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
@@ -312,13 +311,11 @@ B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
         }
     }
 
-    AnanasValue macro_result;
-    if (!AnanasEvalFormList(user_macro.body,
-                            arena,
-                            &call_env,
-                            error_ctx,
-                            &macro_result)) return 0;
-    return AnanasEval(macro_result, arena, env, result, error_ctx);
+    return AnanasEvalFormList(user_macro.body,
+                              arena,
+                              &call_env,
+                              error_ctx,
+                              result);
 }
 
 ERMIS_DECL_ARRAY(HeliosStringView, AnanasParamsArray)
@@ -1213,13 +1210,17 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
                                                           result);
             } else if (callable_node->type == AnanasValueType_Macro) {
                 AnanasMacro *macro = callable_node->u.macro;
-                return AnanasEvalMacroWithArgumentList(macro,
-                                                       node.token,
-                                                       list->cdr,
-                                                       arena,
-                                                       env,
-                                                       error_ctx,
-                                                       result);
+                AnanasValue macro_result;
+                if (!AnanasEvalMacroWithArgumentList(macro,
+                                                     node.token,
+                                                     list->cdr,
+                                                     arena,
+                                                     error_ctx,
+                                                     &macro_result)) return 0;
+                AnanasPrintStdout(macro_result);
+                B32 res = AnanasEval(macro_result, arena, env, result, error_ctx);
+                AnanasPrintStdout(*result);
+                return res;
             } else {
                 AnanasToken token = list->car.token;
                 AnanasErrorContextMessage(error_ctx,
