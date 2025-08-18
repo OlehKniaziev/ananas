@@ -47,6 +47,7 @@ struct AnanasEnv;
 
 typedef struct {
     HeliosStringView *names;
+    B32 variable;
     UZ count;
 } AnanasParams;
 

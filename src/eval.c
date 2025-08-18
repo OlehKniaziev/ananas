@@ -122,37 +122,93 @@ static B32 AnanasEvalFunctionWithArgumentList(AnanasFunction *function,
     AnanasEnv call_env;
     AnanasEnvInit(&call_env, user_function.enclosing_env, arena_allocator);
 
-    UZ arguments_count = 0;
+    if (user_function.params.variable) {
+        HELIOS_ASSERT(user_function.params.count >= 1);
 
-    while (args_list != NULL) {
-        if (arguments_count >= user_function.params.count) {
+        UZ expected_args_count = user_function.params.count - 1;
+
+        UZ args_count = 0;
+        while (args_list != NULL) {
+            if (args_count >= expected_args_count) break;
+
+            HeliosStringView param_name = user_function.params.names[args_count];
+            AnanasValue param_value;
+            if (!AnanasEval(args_list->car, arena, env, &param_value, error_ctx)) return 0;
+            AnanasEnvMapInsert(&call_env.map, param_name, param_value);
+
+            ++args_count;
+            args_list = args_list->cdr;
+        }
+
+        if (args_count < expected_args_count) {
             AnanasErrorContextMessage(error_ctx,
                                       where.row,
                                       where.col,
-                                      "too many arguments: expected %zu, got %zu",
-                                      user_function.params.count,
-                                      arguments_count + 1);
+                                      "not enough arguments for function call: expected at least %zu, got %zu instead",
+                                      expected_args_count,
+                                      args_count);
             return 0;
         }
 
-        AnanasValue param_value;
-        if (!AnanasEval(args_list->car, arena, env, &param_value, error_ctx)) return 0;
+        HELIOS_ASSERT(user_function.params.count - args_count == 1);
 
-        HeliosStringView param_name = user_function.params.names[arguments_count];
-        AnanasEnvMapInsert(&call_env.map, param_name, param_value);
+        AnanasList *rest_list = NULL;
+        AnanasList *current_rest_list = rest_list;
 
-        arguments_count++;
-        args_list = args_list->cdr;
-    }
+        while (args_list != NULL) {
+            AnanasValue param_value;
+            if (!AnanasEval(args_list->car, arena, env, &param_value, error_ctx)) return 0;
 
-    if (arguments_count != user_function.params.count) {
-        AnanasErrorContextMessage(error_ctx,
-                                  where.row,
-                                  where.col,
-                                  "not enough arguments: expected %zu, got %zu",
-                                  user_function.params.count,
-                                  arguments_count);
-        return 0;
+            AnanasList *list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+            list->car = param_value;
+
+            if (rest_list == NULL) {
+                rest_list = list;
+                current_rest_list = list;
+            } else {
+                current_rest_list->cdr = list;
+                current_rest_list = list;
+            }
+
+            args_list = args_list->cdr;
+        }
+
+        HeliosStringView rest_param_name = user_function.params.names[user_function.params.count - 1];
+        AnanasValue rest_param_value = {.type = AnanasValueType_List, .u = {.list = rest_list}};
+        AnanasEnvMapInsert(&call_env.map, rest_param_name, rest_param_value);
+    } else {
+        UZ arguments_count = 0;
+
+        while (args_list != NULL) {
+            if (arguments_count >= user_function.params.count) {
+                AnanasErrorContextMessage(error_ctx,
+                                          where.row,
+                                          where.col,
+                                          "too many arguments: expected %zu, got %zu",
+                                          user_function.params.count,
+                                          arguments_count + 1);
+                return 0;
+            }
+
+            AnanasValue param_value;
+            if (!AnanasEval(args_list->car, arena, env, &param_value, error_ctx)) return 0;
+
+            HeliosStringView param_name = user_function.params.names[arguments_count];
+            AnanasEnvMapInsert(&call_env.map, param_name, param_value);
+
+            arguments_count++;
+            args_list = args_list->cdr;
+        }
+
+        if (arguments_count != user_function.params.count) {
+            AnanasErrorContextMessage(error_ctx,
+                                      where.row,
+                                      where.col,
+                                      "not enough arguments: expected %zu, got %zu",
+                                      user_function.params.count,
+                                      arguments_count);
+            return 0;
+        }
     }
 
     AnanasList *function_body = user_function.body;
@@ -194,33 +250,66 @@ B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
     AnanasEnv call_env;
     AnanasEnvInit(&call_env, user_macro.enclosing_env, arena_allocator);
 
-    UZ args_count = 0;
-    while (args_list != NULL) {
-        if (args_count >= user_macro.params.count) {
+    if (user_macro.params.variable) {
+        HELIOS_ASSERT(user_macro.params.count >= 1);
+
+        UZ expected_args_count = user_macro.params.count - 1;
+
+        UZ args_count = 0;
+        while (args_list != NULL) {
+            if (args_count >= expected_args_count) break;
+
+            HeliosStringView param_name = user_macro.params.names[args_count];
+            AnanasEnvMapInsert(&call_env.map, param_name, args_list->car);
+
+            ++args_count;
+            args_list = args_list->cdr;
+        }
+
+        if (args_count < expected_args_count) {
             AnanasErrorContextMessage(error_ctx,
                                       where.row,
                                       where.col,
-                                      "too many arguments for macro call: expected %zu, got %zu instead",
-                                      user_macro.params.count,
-                                      args_count + 1);
+                                      "not enough arguments for macro call: expected at least %zu, got %zu instead",
+                                      expected_args_count,
+                                      args_count);
             return 0;
         }
 
-        HeliosStringView param_name = user_macro.params.names[args_count];
-        AnanasEnvMapInsert(&call_env.map, param_name, args_list->car);
+        HELIOS_ASSERT(user_macro.params.count - args_count == 1);
 
-        ++args_count;
-        args_list = args_list->cdr;
-    }
+        HeliosStringView rest_param_name = user_macro.params.names[user_macro.params.count - 1];
+        AnanasValue rest_param_value = {.type = AnanasValueType_List, .u = {.list = args_list}};
+        AnanasEnvMapInsert(&call_env.map, rest_param_name, rest_param_value);
+    } else {
+        UZ args_count = 0;
+        while (args_list != NULL) {
+            if (args_count >= user_macro.params.count) {
+                AnanasErrorContextMessage(error_ctx,
+                                          where.row,
+                                          where.col,
+                                          "too many arguments for macro call: expected %zu, got %zu instead",
+                                          user_macro.params.count,
+                                          args_count + 1);
+                return 0;
+            }
 
-    if (args_count != user_macro.params.count) {
-        AnanasErrorContextMessage(error_ctx,
-                                  where.row,
-                                  where.col,
-                                  "Not enough arguments for macro call: expected '%zu', got %zu instead",
-                                  user_macro.params.count,
-                                  args_count);
-        return 0;
+            HeliosStringView param_name = user_macro.params.names[args_count];
+            AnanasEnvMapInsert(&call_env.map, param_name, args_list->car);
+
+            ++args_count;
+            args_list = args_list->cdr;
+        }
+
+        if (args_count != user_macro.params.count) {
+            AnanasErrorContextMessage(error_ctx,
+                                      where.row,
+                                      where.col,
+                                      "Not enough arguments for macro call: expected '%zu', got %zu instead",
+                                      user_macro.params.count,
+                                      args_count);
+            return 0;
+        }
     }
 
     AnanasValue macro_result;
@@ -251,7 +340,40 @@ static B32 AnanasParseParamsFromList(AnanasArena *arena,
             return 0;
         }
 
-        HeliosStringView param = param_node.u.string;
+        HeliosStringView param = param_node.u.symbol;
+
+        if (HeliosStringViewEqualCStr(param, ".")) {
+            if (params_list->cdr == NULL) {
+                AnanasErrorContextMessage(error_ctx,
+                                          param_node.token.row,
+                                          param_node.token.col,
+                                          "expected a param name after '.'");
+                return 0;
+            }
+
+            if (params_list->cdr->cdr != NULL) {
+                AnanasErrorContextMessage(error_ctx,
+                                          param_node.token.row,
+                                          param_node.token.col,
+                                          "expected only one parameter name after '.'");
+                return 0;
+            }
+
+            param_node = params_list->cdr->car;
+            if (param_node.type != AnanasValueType_Symbol) {
+                AnanasErrorContextMessage(error_ctx,
+                                          param_node.token.row,
+                                          param_node.token.col,
+                                          "expected a symbol as a parameter name");
+                return 0;
+            }
+
+            param = param_node.u.symbol;
+            AnanasParamsArrayPush(&params_array, param);
+            out_params->variable = 1;
+            break;
+        }
+
         AnanasParamsArrayPush(&params_array, param);
 
         params_list = params_list->cdr;
