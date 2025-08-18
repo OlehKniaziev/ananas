@@ -333,6 +333,8 @@ static B32 AnanasParseParamsFromList(AnanasArena *arena,
     AnanasParamsArray params_array;
     AnanasParamsArrayInit(&params_array, arena_allocator, 16);
 
+    out_params->variable = 0;
+
     while (params_list != NULL) {
         AnanasValue param_node = params_list->car;
         if (param_node.type != AnanasValueType_Symbol) {
