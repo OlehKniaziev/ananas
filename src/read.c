@@ -8,14 +8,15 @@ static const char *token_type_str_table[] = {
 };
 
 #define ANANAS_ENUM_READER_MACROS \
-    X("`", AnanasGraveMacro) \
-    X(",", AnanasUnquoteMacro)
+    X("`", AnanasQuoteMacro) \
+    X(",", AnanasUnquoteMacro) \
+    X(",~", AnanasUnquoteSpliceMacro)
 
 #define X(_name, proc) ANANAS_DECLARE_NATIVE_MACRO(proc);
 ANANAS_ENUM_READER_MACROS
 #undef X
 
-ANANAS_DECLARE_NATIVE_MACRO(AnanasGraveMacro) {
+ANANAS_DECLARE_NATIVE_MACRO(AnanasQuoteMacro) {
     ANANAS_CHECK_ARGS_COUNT(1);
 
     AnanasList *results_list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
@@ -36,6 +37,21 @@ ANANAS_DECLARE_NATIVE_MACRO(AnanasUnquoteMacro) {
     AnanasList *results_list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
     results_list->car.type = AnanasValueType_Symbol;
     results_list->car.u.symbol = HELIOS_SV_LIT("unquote");
+
+    results_list->cdr = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+    results_list->cdr->car = AnanasArgAt(args, 0);
+
+    result->type = AnanasValueType_List;
+    result->u.list = results_list;
+    return 1;
+}
+
+ANANAS_DECLARE_NATIVE_MACRO(AnanasUnquoteSpliceMacro) {
+    ANANAS_CHECK_ARGS_COUNT(1);
+
+    AnanasList *results_list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+    results_list->car.type = AnanasValueType_Symbol;
+    results_list->car.u.symbol = HELIOS_SV_LIT("unquote-splice");
 
     results_list->cdr = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
     results_list->cdr->car = AnanasArgAt(args, 0);
