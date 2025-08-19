@@ -43,6 +43,35 @@ struct AnanasList {
     struct AnanasList *cdr;
 };
 
+static inline AnanasList *AnanasListCopy(AnanasArena *arena, AnanasList *list) {
+    AnanasList *out_list = NULL;
+    AnanasList *current_out_list = out_list;
+
+    while (list != NULL) {
+        AnanasList *l = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+
+        if (list->car.type == AnanasValueType_List) {
+            AnanasList *list_to_copy = list->car.u.list;
+            l->car.type = AnanasValueType_List;
+            l->car.u.list = AnanasListCopy(arena, list_to_copy);
+        } else {
+            l->car = list->car;
+        }
+
+        if (out_list == NULL) {
+            out_list = l;
+            current_out_list = l;
+        } else {
+            current_out_list->cdr = l;
+            current_out_list = l;
+        }
+
+        list = list->cdr;
+    }
+
+    return out_list;
+}
+
 struct AnanasEnv;
 
 typedef struct {
