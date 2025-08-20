@@ -1235,9 +1235,7 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
                                                      arena,
                                                      error_ctx,
                                                      &macro_result)) return 0;
-                AnanasPrintStdout(macro_result);
                 B32 res = AnanasEval(macro_result, arena, env, result, error_ctx);
-                AnanasPrintStdout(*result);
                 return res;
             } else {
                 AnanasToken token = list->car.token;
