@@ -757,23 +757,24 @@ static B32 AnanasUnquoteForm(AnanasList *args,
             }
 
             AnanasValue unquote_arg = unquote_args->car;
-            AnanasValue unquote_form;
-            if (!AnanasEval(unquote_arg, arena, env, &unquote_form, error_ctx)) return 0;
+            AnanasValue unquoted_form;
+            if (!AnanasEval(unquote_arg, arena, env, &unquoted_form, error_ctx)) return 0;
 
-
-            if (unquote_form.type != AnanasValueType_List) {
-                current_args->car = unquote_form;
+            if (unquoted_form.type != AnanasValueType_List) {
+                current_args->car = unquoted_form;
             } else {
-                AnanasList *unquote_list = unquote_form.u.list;
-                if (unquote_list != NULL) {
+                AnanasList *unquoted_list = unquoted_form.u.list;
+                if (unquoted_list != NULL) {
                     args = current_args->cdr;
-                    current_args->car = unquote_list->car;
-                    current_args->cdr = unquote_list->cdr;
-                    while (unquote_list->cdr != NULL) {
-                        unquote_list = unquote_list->cdr;
+                    AnanasList *current_unquoted_list = unquoted_list;
+                    while (current_unquoted_list->cdr != NULL) {
+                        current_unquoted_list = current_unquoted_list->cdr;
                     }
 
-                    unquote_list->cdr = args;
+                    current_unquoted_list->cdr = args;
+
+                    current_args->car = unquoted_list->car;
+                    current_args->cdr = unquoted_list->cdr;
                 }
             }
         }
