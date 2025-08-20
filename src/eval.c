@@ -26,6 +26,7 @@ void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator alloca
     X("cdr", AnanasCdr) \
     X("string-split", AnanasStringSplit) \
     X("concat", AnanasConcat) \
+    X("concat-syms", AnanasConcatSyms) \
     X("substring", AnanasSubstring) \
     X("print", AnanasPrintBuiltin) \
     X("read", AnanasRead) \
@@ -557,6 +558,40 @@ ANANAS_DEFINE_NATIVE_FUNCTION(AnanasConcat) {
     result->type = AnanasValueType_String;
     result->u.string.data = buf;
     result->u.string.count = buf_count;
+    return 1;
+}
+
+ANANAS_DEFINE_NATIVE_FUNCTION(AnanasConcatSyms) {
+    if (args.count == 0) {
+        ANANAS_NATIVE_BAIL("no arguments passed to 'concat-syms'");
+    }
+
+    U8 *buf = arena->data + arena->offset;
+
+    UZ buf_offset = 0;
+    for (UZ i = 0; i < args.count; ++i) {
+        AnanasValue arg = AnanasArgAt(args, i);
+        if (arg.type != AnanasValueType_Symbol) {
+            AnanasErrorContextMessage(error_ctx,
+                                      arg.token.row,
+                                      arg.token.col,
+                                      "expected a value of type symbol, got %s instead",
+                                      AnanasTypeName(arg.type));
+            return 0;
+        }
+
+        HeliosStringView sym = arg.u.symbol;
+        memcpy(&buf[buf_offset], sym.data, sym.count);
+        arena->offset += sym.count;
+        HELIOS_VERIFY(arena->capacity > arena->offset);
+        buf_offset += sym.count;
+    }
+
+    arena->offset = AnanasAlignForward(arena->offset, sizeof(void *));
+
+    result->type = AnanasValueType_Symbol;
+    result->u.symbol.data = buf;
+    result->u.symbol.count = buf_offset;
     return 1;
 }
 
