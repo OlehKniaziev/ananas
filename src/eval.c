@@ -1205,6 +1205,55 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
             AnanasEnvMapInsert(&env->map, macro_name, macro_node);
             *result = macro_node;
             return 1;
+        } else if (HeliosStringViewEqualCStr(sym_name, "macroexpand")) {
+            AnanasList *args = list->cdr;
+            if (args == NULL) {
+                AnanasErrorContextMessage(error_ctx, node.token.row, node.token.col, "no argument passed to 'macroexpand' form");
+                return 0;
+            }
+
+            AnanasValue macro_list_value;
+            if (!AnanasEval(args->car, arena, env, &macro_list_value, error_ctx)) return 0;
+
+            if (macro_list_value.type != AnanasValueType_List) {
+                AnanasErrorContextMessage(error_ctx,
+                                          node.token.row,
+                                          node.token.col,
+                                          "'macroexpand' form expects a list as it's argument, but got %s instead",
+                                          AnanasTypeName(macro_list_value.type));
+                return 0;
+            }
+
+            AnanasList *macro_list = macro_list_value.u.list;
+
+            if (macro_list == NULL) {
+                AnanasErrorContextMessage(error_ctx,
+                                          node.token.row,
+                                          node.token.col,
+                                          "cannot call 'macroexpand' with an empty list");
+                return 0;
+            }
+
+            AnanasValue macro_value;
+            if (!AnanasEval(macro_list->car, arena, env, &macro_value, error_ctx)) return 0;
+
+            if (macro_value.type != AnanasValueType_Macro) {
+                AnanasErrorContextMessage(error_ctx,
+                                          node.token.row,
+                                          node.token.col,
+                                          "'macroexpand' form expects the car of the list argument to be a macro, but it is of type %s",
+                                          AnanasTypeName(args->car.type));
+                return 0;
+            }
+
+            AnanasMacro *macro = macro_value.u.macro;
+            AnanasList *macro_args = macro_list->cdr;
+            return AnanasEvalMacroWithArgumentList(macro,
+                                                   node.token,
+                                                   macro_args,
+                                                   arena,
+                                                   error_ctx,
+                                                   result);
         } else {
             AnanasValue *callable_node = AnanasEnvLookup(env, sym_name);
             if (callable_node == NULL) {
