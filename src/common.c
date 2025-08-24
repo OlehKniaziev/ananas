@@ -12,6 +12,19 @@ void AnanasArenaInit(AnanasArena *arena, UZ cap) {
     arena->offset = 0;
 }
 
+// NOTE(oleh): This is useful in cases where we need to detect memory violations
+// using address sanitizer.
+#ifdef ANANAS_REPLACE_ARENA_WITH_MALLOC
+void *AnanasArenaPush(AnanasArena *arena, UZ count) {
+    HELIOS_UNUSED(arena);
+    return calloc(count, sizeof(U8));
+}
+static void ArenaFreeStub(void *arena, void *ptr, UZ count) {
+    HELIOS_UNUSED(arena);
+    HELIOS_UNUSED(count);
+    free(ptr);
+}
+#else
 void *AnanasArenaPush(AnanasArena *arena, UZ count) {
     count = AnanasAlignForward(count, sizeof(void *));
     UZ bytes_avail = arena->capacity - arena->offset;
@@ -25,14 +38,15 @@ void *AnanasArenaPush(AnanasArena *arena, UZ count) {
     return ptr;
 }
 
-static void *ArenaAllocStub(void *arena, UZ count) {
-    return AnanasArenaPush((AnanasArena *)arena, count);
-}
-
 static void ArenaFreeStub(void *arena, void *ptr, UZ count) {
     HELIOS_UNUSED(arena);
     HELIOS_UNUSED(ptr);
     HELIOS_UNUSED(count);
+}
+#endif // 0
+
+static void *ArenaAllocStub(void *arena, UZ count) {
+    return AnanasArenaPush((AnanasArena *)arena, count);
 }
 
 HeliosAllocator AnanasArenaToHeliosAllocator(AnanasArena *arena) {
