@@ -97,7 +97,7 @@
 #define ERMIS_HASHMAP_FOREACH(hashmap, keyname, valuename, body)        \
     for (UZ _idx = 0; _idx < (hashmap)->capacity; ++_idx) {             \
         if (((hashmap)->meta[_idx] & ERMIS_HASH_OCCUPIED) == 0) continue; \
-        __typeof__((hashmap)->keys[0]) keyname = (hashmap)->keys[_idx];     \
+        __typeof__((hashmap)->keys[0]) keyname = (hashmap)->keys[_idx]; \
         __typeof__((hashmap)->values[0]) valuename = (hashmap)->values[_idx]; \
         body;                                                           \
     }
@@ -105,10 +105,10 @@
 #define ERMIS_IMPL_HASHMAP(K, V, hashmapname, eqfunc, hashfunc)         \
     void hashmapname##Init(hashmapname *map, HeliosAllocator allocator, UZ cap) { \
         map->allocator = allocator;                                     \
-        map->keys = HeliosAlloc(allocator, sizeof(K) * cap);            \
-        map->values = HeliosAlloc(allocator, sizeof(V) * cap);          \
-        map->meta = HeliosAlloc(allocator, sizeof(map->meta[0]) * cap); \
         map->capacity = cap ? cap : ERMIS_HASHMAP_DEFAULT_CAP;          \
+        map->keys = HeliosAlloc(allocator, sizeof(K) * map->capacity);            \
+        map->values = HeliosAlloc(allocator, sizeof(V) * map->capacity);          \
+        map->meta = HeliosAlloc(allocator, sizeof(map->meta[0]) * map->capacity); \
         map->count = 0;                                                 \
     }                                                                   \
                                                                         \
@@ -119,9 +119,10 @@
             hashmapname new_map;                                        \
             hashmapname##Init(&new_map, map->allocator, new_cap);       \
                                                                         \
-            ERMIS_HASHMAP_FOREACH(map, k, v, {                          \
-                    hashmapname##Insert(&new_map, k, v);                \
+            ERMIS_HASHMAP_FOREACH(map, key, value, {                    \
+                    HELIOS_ASSERT(hashmapname##Insert(&new_map, key, value)); \
                 });                                                     \
+                                                                        \
             hashmapname##Free(map);                                     \
             *map = new_map;                                             \
         }                                                               \
@@ -144,7 +145,7 @@
             }                                                           \
                                                                         \
             ++idx;                                                      \
-            if (idx > map->capacity) idx = 0;                           \
+            if (idx >= map->capacity) idx = 0;                          \
         } while (1);                                                    \
     }                                                                   \
                                                                         \
@@ -159,7 +160,7 @@
                                                                         \
             ++idx;                                                      \
             /* NOTE: using an `if` instead of modulus */                \
-            if (idx > map->capacity) idx = 0;                           \
+            if (idx >= map->capacity) idx = 0;                          \
         } while (idx != start_idx);                                     \
                                                                         \
         return NULL;                                                    \

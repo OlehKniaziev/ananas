@@ -586,7 +586,8 @@ HELIOS_DEF void HeliosString8StreamRetreat(HeliosString8Stream *s) {
 }
 
 HELIOS_DEF HeliosStringView HeliosReadEntireFile(HeliosAllocator allocator, HeliosStringView path) {
-    char *path_cstr = HeliosStringViewCloneToCStr(allocator, path);
+    HeliosAllocator temp = HeliosGetTempAllocator();
+    char *path_cstr = HeliosStringViewCloneToCStr(temp, path);
 
     ssize_t fd = open(path_cstr, O_RDONLY);
     if (fd == -1) {
