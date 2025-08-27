@@ -834,7 +834,7 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
             AnanasErrorContextMessage(error_ctx,
                                       node.token.row,
                                       node.token.col,
-                                      "Unbound symbol '" HELIOS_SV_FMT "'",
+                                      "unbound symbol '" HELIOS_SV_FMT "'",
                                       HELIOS_SV_ARG(node.u.symbol));
             return 0;
         }
@@ -1297,7 +1297,7 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
                 AnanasErrorContextMessage(error_ctx,
                                           token.row,
                                           token.col,
-                                          "Unbound symbol '" HELIOS_SV_FMT "'",
+                                          "unbound symbol '" HELIOS_SV_FMT "'",
                                           HELIOS_SV_ARG(sym_name));
                 return 0;
             }
