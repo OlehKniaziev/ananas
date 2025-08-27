@@ -550,30 +550,33 @@ HELIOS_DEF B32 HeliosString8StreamNext(HeliosString8Stream *stream, HeliosChar *
 
     const U8 *ptr = stream->data + stream->byte_offset;
 
-    U32 bytes = ((U32)ptr[0] << 0) | ((U32)ptr[1] << 8) | ((U32)ptr[2] << 16) | ((U32)ptr[3] << 24);
+    U8 first_byte = ptr[0];
 
-    if ((bytes & HELIOS_UTF8_MASK2) == HELIOS_UTF8_MASK2) {
+    if ((first_byte & HELIOS_UTF8_MASK2) == HELIOS_UTF8_MASK2) {
+        U32 bytes = (U32)first_byte | ((U32)ptr[1] << 8);
         if (c != NULL) *c = ((bytes & 0x1F) << 6) | ((bytes & 0x3F00) >> 8);
         stream->byte_offset += 1;
         stream->last_char_size = 2;
         return 1;
     }
 
-    if ((bytes & HELIOS_UTF8_MASK3) == HELIOS_UTF8_MASK3) {
+    if ((first_byte & HELIOS_UTF8_MASK3) == HELIOS_UTF8_MASK3) {
+        U32 bytes = (U32)first_byte | ((U32)ptr[1] << 8) | ((U32)ptr[2] << 16);
         if (c != NULL) *c = ((bytes & 0x0F) << 12) | ((bytes & 0x3F00) >> 2) | ((bytes & 0x3F0000) >> 16);
         stream->byte_offset += 2;
         stream->last_char_size = 3;
         return 1;
     }
 
-    if ((bytes & HELIOS_UTF8_MASK4) == HELIOS_UTF8_MASK4) {
+    if ((first_byte & HELIOS_UTF8_MASK4) == HELIOS_UTF8_MASK4) {
+        U32 bytes = (U32)first_byte | ((U32)ptr[1] << 8) | ((U32)ptr[2] << 16) | ((U32)ptr[3] << 24);
         if (c != NULL) *c = ((bytes & 0x07) << 18) | ((bytes & 0x3F00) << 4) | ((bytes & 0x3F0000) >> 10) | ((bytes & 0x3F000000) >> 24);
         stream->byte_offset += 3;
         stream->last_char_size = 4;
         return 1;
     }
 
-    if (c != NULL) *c = bytes & 0xFF;
+    if (c != NULL) *c = first_byte;
     stream->last_char_size = 1;
     return 1;
 }
