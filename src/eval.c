@@ -31,7 +31,8 @@ void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator alloca
     X("print", AnanasPrintBuiltin) \
     X("read", AnanasRead) \
     X("=", AnanasEqualBuiltin) \
-    X("type", AnanasType)
+    X("type", AnanasType) \
+    X("+", AnanasPlus)
 
 #define X(name, func) ANANAS_DECLARE_NATIVE_FUNCTION(func);
 ANANAS_ENUM_NATIVE_FUNCTIONS
@@ -743,6 +744,22 @@ ANANAS_DECLARE_NATIVE_FUNCTION(AnanasType) {
     const char *type_name = AnanasTypeName(arg.type);
     result->type = AnanasValueType_Symbol;
     result->u.symbol = HELIOS_SV_LIT(type_name);
+    return 1;
+}
+
+ANANAS_DECLARE_NATIVE_FUNCTION(AnanasPlus) {
+    (void) arena;
+
+    ANANAS_CHECK_ARGS_COUNT(2);
+
+    ANANAS_CHECK_ARG_TYPE(0, Int, lhs);
+    ANANAS_CHECK_ARG_TYPE(1, Int, rhs);
+
+    S64 lhs = lhs_arg.u.integer;
+    S64 rhs = rhs_arg.u.integer;
+
+    result->type = AnanasValueType_Int;
+    result->u.integer = lhs + rhs;
     return 1;
 }
 
