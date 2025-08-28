@@ -1,5 +1,7 @@
 #include "lexer.h"
 
+#include "common.h"
+
 static B32 AnanasIsReaderMacroChar(HeliosChar c) {
     return c == '`' ||
            c == '@' ||
@@ -34,7 +36,7 @@ static B32 AnanasIsSymbolChar(HeliosChar c) {
         ++lexer->col;                                                   \
     }
 
-B32 AnanasLexerNext(AnanasLexer *lexer, AnanasToken *token) {
+B32 AnanasLexerNext(AnanasLexer *lexer, HeliosAllocator allocator, AnanasToken *token) {
     HeliosChar cur_char;
 
     while (1) {
@@ -74,27 +76,62 @@ B32 AnanasLexerNext(AnanasLexer *lexer, AnanasToken *token) {
         token->col = lexer->col;
 
         AnanasTokenType token_type = AnanasTokenType_String;
-        UZ string_start = lexer->contents->byte_offset + 1;
+        AnanasDString string_value;
+        AnanasDStringInit(&string_value, allocator, 7);
 
-        do {
+        while (1) {
             if (!HeliosString8StreamNext(lexer->contents, &cur_char)) {
                 token_type = AnanasTokenType_UnclosedString;
                 break;
             }
 
-            if (cur_char == '\n') {
-                ++lexer->row;
-                lexer->col = 1;
-            } else {
-                ++lexer->col;
-            }
-        } while (cur_char != '"');
+            if (cur_char == '\\') {
+                if (!HeliosString8StreamNext(lexer->contents, &cur_char)) {
+                    token_type = AnanasTokenType_UnclosedString;
+                    break;
+                }
 
-        UZ string_end = lexer->contents->byte_offset;
+                switch (cur_char) {
+                case 'n': {
+                    AnanasDStringPush(&string_value, '\n');
+                    break;
+                }
+                case 'r': {
+                    AnanasDStringPush(&string_value, '\r');
+                    break;
+                }
+                case '\\': {
+                    AnanasDStringPush(&string_value, '\\');
+                    break;
+                }
+                case '"': {
+                    AnanasDStringPush(&string_value, '"');
+                    break;
+                }
+                default: {
+                    token_type = AnanasTokenType_UnclosedString;
+                    goto loop_end;
+                }
+                }
+            } else if (cur_char == '"') {
+                break;
+            } else {
+                AnanasDStringPush(&string_value, cur_char);
+
+                if (cur_char == '\n') {
+                    ++lexer->row;
+                    lexer->col = 1;
+                } else {
+                    ++lexer->col;
+                }
+            }
+        }
+
+    loop_end:
 
         token->type = token_type;
-        token->value.data = lexer->contents->data + string_start;
-        token->value.count = string_end - string_start;
+        token->value.data = string_value.items;
+        token->value.count = string_value.count;
 
         return 1;
     }

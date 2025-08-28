@@ -16,6 +16,8 @@ typedef struct {
     HeliosStringView error_buffer;
 } AnanasErrorContext;
 
+ERMIS_DECL_ARRAY(U8, AnanasDString)
+
 void AnanasErrorContextMessage(AnanasErrorContext *ctx, U32 row, U32 col, const char *fmt, ...) __attribute__((format(printf, 4, 5)));
 
 typedef struct {

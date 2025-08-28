@@ -80,3 +80,5 @@ void AnanasErrorContextMessage(AnanasErrorContext *ctx, U32 row, U32 col, const 
     vsnprintf((char *)ctx->error_buffer.data, ctx->error_buffer.count, (const char *)fmt_buffer, args);
     va_end(args);
 }
+
+ERMIS_IMPL_ARRAY(U8, AnanasDString)

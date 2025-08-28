@@ -81,8 +81,12 @@ B32 AnanasReaderNext(AnanasLexer *lexer,
                      AnanasArena *arena,
                      AnanasValue *result,
                      AnanasErrorContext *error_ctx) {
+    // FIXME(oleh): Probably move this up the call stack, and pass the `HeliosAllocator` parameter
+    // instead of the arena one.
+    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
+
     AnanasToken token;
-    if (!AnanasLexerNext(lexer, &token)) return 0;
+    if (!AnanasLexerNext(lexer, arena_allocator, &token)) return 0;
 
     switch (token.type) {
     case AnanasTokenType_Int: {
@@ -111,7 +115,7 @@ B32 AnanasReaderNext(AnanasLexer *lexer,
         while (1) {
             AnanasLexer prev_lexer = *lexer;
             HeliosString8Stream prev_contents = *lexer->contents;
-            if (!AnanasLexerNext(lexer, &token)) {
+            if (!AnanasLexerNext(lexer, arena_allocator, &token)) {
                 AnanasErrorContextMessage(error_ctx, token.row, token.col + token.value.count, "EOF while expecting ')'");
                 return 0;
             }

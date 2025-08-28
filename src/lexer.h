@@ -34,6 +34,6 @@ typedef struct {
 
 void AnanasLexerInit(AnanasLexer *lexer, HeliosString8Stream *contents);
 
-B32 AnanasLexerNext(AnanasLexer *lexer, AnanasToken *token);
+B32 AnanasLexerNext(AnanasLexer *lexer, HeliosAllocator allocator, AnanasToken *token);
 
 #endif // ANANAS_LEXER_H_
