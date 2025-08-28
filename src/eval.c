@@ -543,23 +543,36 @@ ANANAS_DEFINE_NATIVE_FUNCTION(AnanasStringSplit) {
 }
 
 ANANAS_DEFINE_NATIVE_FUNCTION(AnanasConcat) {
-    ANANAS_CHECK_ARGS_COUNT(2);
+    if (args.count == 0) {
+        ANANAS_NATIVE_BAIL("no arguments passed to 'concat'");
+    }
 
-    ANANAS_CHECK_ARG_TYPE(0, String, lhs);
-    ANANAS_CHECK_ARG_TYPE(1, String, rhs);
+    U8 *buf = arena->data + arena->offset;
 
-    HeliosStringView lhs = lhs_arg.u.string;
-    HeliosStringView rhs = rhs_arg.u.string;
+    UZ buf_offset = 0;
+    for (UZ i = 0; i < args.count; ++i) {
+        AnanasValue arg = AnanasArgAt(args, i);
+        if (arg.type != AnanasValueType_String) {
+            AnanasErrorContextMessage(error_ctx,
+                                      arg.token.row,
+                                      arg.token.col,
+                                      "expected a value of type string, got %s instead",
+                                      AnanasTypeName(arg.type));
+            return 0;
+        }
 
-    UZ buf_count = lhs.count + rhs.count;
+        HeliosStringView sym = arg.u.string;
+        memcpy(&buf[buf_offset], sym.data, sym.count);
+        arena->offset += sym.count;
+        HELIOS_VERIFY(arena->capacity > arena->offset);
+        buf_offset += sym.count;
+    }
 
-    U8 *buf = AnanasArenaPush(arena, buf_count);
-    memcpy(buf, lhs.data, lhs.count);
-    memcpy(&buf[lhs.count], rhs.data, rhs.count);
+    arena->offset = AnanasAlignForward(arena->offset, sizeof(void *));
 
     result->type = AnanasValueType_String;
-    result->u.string.data = buf;
-    result->u.string.count = buf_count;
+    result->u.symbol.data = buf;
+    result->u.symbol.count = buf_offset;
     return 1;
 }
 
