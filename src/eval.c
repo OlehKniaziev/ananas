@@ -32,7 +32,8 @@ void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator alloca
     X("read", AnanasRead) \
     X("=", AnanasEqualBuiltin) \
     X("type", AnanasType) \
-    X("+", AnanasPlus)
+    X("+", AnanasPlus) \
+    X("to-string", AnanasToString)
 
 #define X(name, func) ANANAS_DECLARE_NATIVE_FUNCTION(func);
 ANANAS_ENUM_NATIVE_FUNCTIONS
@@ -760,6 +761,22 @@ ANANAS_DECLARE_NATIVE_FUNCTION(AnanasPlus) {
 
     result->type = AnanasValueType_Int;
     result->u.integer = lhs + rhs;
+    return 1;
+}
+
+ANANAS_DECLARE_NATIVE_FUNCTION(AnanasToString) {
+    ANANAS_CHECK_ARGS_COUNT(1);
+
+    AnanasValue arg = AnanasArgAt(args, 0);
+
+    if (arg.type == AnanasValueType_String) {
+        ANANAS_NATIVE_RETURN(arg);
+    }
+
+    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
+    HeliosStringView s = AnanasPrint(arena_allocator, arg);
+    result->type = AnanasValueType_String;
+    result->u.string = s;
     return 1;
 }
 
