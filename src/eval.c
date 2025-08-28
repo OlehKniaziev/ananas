@@ -33,7 +33,8 @@ void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator alloca
     X("=", AnanasEqualBuiltin) \
     X("type", AnanasType) \
     X("+", AnanasPlus) \
-    X("to-string", AnanasToString)
+    X("to-string", AnanasToString) \
+    X("error", AnanasError)
 
 #define X(name, func) ANANAS_DECLARE_NATIVE_FUNCTION(func);
 ANANAS_ENUM_NATIVE_FUNCTIONS
@@ -791,6 +792,17 @@ ANANAS_DECLARE_NATIVE_FUNCTION(AnanasToString) {
     result->type = AnanasValueType_String;
     result->u.string = s;
     return 1;
+}
+
+ANANAS_DECLARE_NATIVE_FUNCTION(AnanasError) {
+    (void) arena;
+
+    ANANAS_CHECK_ARGS_COUNT(1);
+    ANANAS_CHECK_ARG_TYPE(0, String, msg);
+
+    HeliosStringView msg = msg_arg.u.string;
+    *result = ANANAS_FALSE;
+    ANANAS_NATIVE_BAIL_FMT(HELIOS_SV_FMT, HELIOS_SV_ARG(msg));
 }
 
 static B32 AnanasUnquoteForm(AnanasList *args,
