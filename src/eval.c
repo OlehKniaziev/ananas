@@ -29,6 +29,7 @@ void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator alloca
     X("concat-syms", AnanasConcatSyms) \
     X("substring", AnanasSubstring) \
     X("print", AnanasPrintBuiltin) \
+    X("print-string", AnanasPrintString) \
     X("read", AnanasRead) \
     X("=", AnanasEqualBuiltin) \
     X("type", AnanasType) \
@@ -661,6 +662,18 @@ ANANAS_DECLARE_NATIVE_FUNCTION(AnanasPrintBuiltin) {
     HeliosStringView string = AnanasPrint(arena_allocator, value);
     printf(HELIOS_SV_FMT "\n", HELIOS_SV_ARG(string));
     ANANAS_NATIVE_RETURN(value);
+}
+
+ANANAS_DECLARE_NATIVE_FUNCTION(AnanasPrintString) {
+    (void) arena;
+
+    ANANAS_CHECK_ARGS_COUNT(1);
+
+    ANANAS_CHECK_ARG_TYPE(0, String, s);
+
+    HeliosStringView s = s_arg.u.string;
+    printf(HELIOS_SV_FMT "\n", HELIOS_SV_ARG(s));
+    ANANAS_NATIVE_RETURN(s_arg);
 }
 
 ANANAS_DECLARE_NATIVE_FUNCTION(AnanasRead) {
