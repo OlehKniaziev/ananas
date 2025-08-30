@@ -135,6 +135,13 @@ B32 AnanasLexerNext(AnanasLexer *lexer, HeliosAllocator allocator, AnanasToken *
 
         return 1;
     }
+    case ';': {
+        while (HeliosString8StreamNext(lexer->contents, &cur_char)) {
+            if (cur_char == '\n') return AnanasLexerNext(lexer, allocator, token);
+        }
+
+        return 0;
+    }
     default: {
         token->col = lexer->col;
         token->row = lexer->row;
