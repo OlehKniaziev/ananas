@@ -1169,6 +1169,14 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
                 return 0;
             }
 
+            if (args_list->cdr == NULL) {
+                AnanasErrorContextMessage(error_ctx,
+                                          node.token.row,
+                                          node.token.col,
+                                          "no expressions to evaluate passed to 'let' form");
+                return 0;
+            }
+
             AnanasValue bindings_value = args_list->car;
             if (bindings_value.type != AnanasValueType_List) {
                 AnanasErrorContextMessage(error_ctx,
