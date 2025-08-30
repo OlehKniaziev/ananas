@@ -1,0 +1,215 @@
+(macro func (name args . body) `(var ,name (lambda ,args (do ,~body))))
+
+(func not (b) (if (= b false) true false))
+(func != (lhs rhs) (not (= lhs rhs)))
+(func empty? (list) (= list `()))
+(func not-empty? (list) (not (empty? list)))
+
+(macro when (cond . forms)
+       `(if ,cond
+            (do ,~forms)))
+
+(macro cond (. forms)
+       (if (not-empty? forms)
+           (let ((rest (cdr (cdr forms))))
+             (list `if
+                   (car forms)
+                   (car (cdr forms))
+                   (if (not-empty? rest) `(cond ,~rest))))))
+
+(macro switch (value . cases)
+       (if (not-empty? cases)
+           (let ((case-pair (car cases))
+                 (case-value (car case-pair))
+                 (case-consequence (cdr case-pair))
+                 (rest (cdr cases)))
+             `(if (= ,value ,case-value)
+                  (do ,~case-consequence)
+                  ,(if (not-empty? rest)
+                       `(switch ,value ,~rest)
+                       `(error "switch cases exhausted"))))
+           (error "no forms passed to `switch` macro")))
+
+(macro loop (cont-name . body) `(let ((,cont-name (lambda () ,~body)))
+                                (,cont-name)))
+
+(macro iter (list elem . forms)
+       `(let ((-iter-list ,list))
+          (loop continue
+                (if (not-empty? -iter-list)
+                    (do
+                     (let ((,elem (car -iter-list)))
+                       ,~forms
+                       (set -iter-list (cdr -iter-list))
+                       (continue)))))))
+
+(macro struct (name . fields)
+       (let ((accessors (list))
+             (fields-list name))
+         (iter fields field
+               (set accessors
+                    (cons
+                     `(func ,(concat-syms name `- field) (,name) (car ,fields-list))
+                     accessors))
+               (set fields-list `(cdr ,fields-list)))
+         `(do
+           (func ,(concat-syms `make- name) ,fields (list ,~fields))
+           ,~accessors)))
+
+(var input-contents (read-file "./self-host/t.ans"))
+
+(var out-asm-main-proc-name "main")
+
+(var out-asm-prelude (concat ".global " out-asm-main-proc-name "\n"))
+(var out-asm-rodata (concat ".section .rodata\n"
+                            "print_int_printf_format: .asciz \"%lld\\n\"\n"))
+
+(var out-asm out-asm-prelude)
+
+(macro concat! (var . s)
+       `(set ,var (concat ,var ,~s)))
+
+(var out-asm-main-proc-body "")
+
+(var is-top-level true)
+
+(macro emit-asm (. asm)
+       `(if is-top-level
+            (concat! out-asm-main-proc-body "\t" ,~asm)
+            (concat! out-asm "\t" ,~asm)))
+
+(var temps-count 0)
+
+(macro inc! (v)
+       `(set ,v (+ ,v 1)))
+
+(struct val-desc type loc)
+
+(struct val-loc type value)
+
+(struct function symbol name arity source)
+
+(var variables (list))
+
+(var builtin-+-source
+     (concat
+      "\tadd %rsi, %rdi\n"
+      "\tmovq %rdi, %rax\n"
+      "\tret\n"))
+
+(var builtin-print-int-source
+     (concat
+      "\tmov %rdi, %rsi\n"
+      "\tlea print_int_printf_format(%rip), %rdi\n"
+      "\txor %rax, %rax\n"
+      "\tcall printf\n"
+      "\tmov %rsi, %rax\n"
+      "\tret"))
+
+(var builtin-functions
+     (list
+      (make-function `+ "ananas_builtin_plus" 2 builtin-+-source)
+      (make-function `print-int "ananas_builtin_print_int" 1 builtin-print-int-source)))
+
+(macro cons! (car cdr)
+       `(set ,cdr (cons ,car ,cdr)))
+
+(iter builtin-functions fn
+      (concat! out-asm (function-name fn) ": \n" (function-source fn) "\n")
+      (cons!
+       (list
+        (function-symbol fn)
+        (make-val-desc
+         `(function ,(function-arity fn))
+         (make-val-loc `label (function-name fn))))
+       variables))
+
+(func emit-const-int (c)
+      (inc! temps-count)
+      (let ((t (concat "t" (to-string temps-count))))
+        (concat! out-asm-rodata t ": .quad " (to-string c) "\n")
+        (make-val-loc `label t)))
+
+(func lookup-symbol (name)
+      (let ((var-desc false))
+        (iter variables var
+              (if (and (not var-desc) (= (car var) name))
+                  (set var-desc (car (cdr var)))))
+        (or var-desc (error (concat "failed compilation: unbound symbol " (to-string name))))))
+
+(func len (l)
+      (let ((count 0))
+        (iter l _
+              (inc! count))
+        count))
+
+(func compile-form (form)
+      (let ((form-type (type form)))
+        (switch form-type
+                (`int (emit-const-int form))
+                (`symbol (lookup-symbol form))
+                (`list (compile-list form)))))
+
+(func loc-to-asm (loc)
+      (switch (val-loc-type loc)
+              (`label (concat (val-loc-value loc) "(%rip)"))
+              (`register (val-loc-value loc))))
+
+(var system-v-call-arg-registers
+     (list "%rdi"
+           "%rsi"
+           "%rdx"
+           "%rcx"
+           "%r8"
+           "%r9"))
+
+(func compile-list (l)
+      (when (empty? l)
+        (error "failed compilation: cannot compile an empty list"))
+      (let ((c (car l))
+            (args (cdr l))
+            (args-count (len args)))
+        (when (!= (type c) `symbol)
+          (error (concat "failed compilation: list's car was expected to be a symbol, got '" (type c) "' instead")))
+        (let ((function-desc (lookup-symbol c)))
+          (when (not function-desc)
+            (error (concat "failed compilation: unbound symbol '" (to-string c) "'")))
+          (let ((function-type (val-desc-type function-desc)))
+            (when (!= (car function-type) `function)
+              (error "failed compilation: list's car does not evaluate to a function"))
+            (let ((function-arity (car (cdr function-type)))
+                  (function-loc (val-desc-loc function-desc)))
+              (when (!= args-count function-arity)
+                (error "failed compilation: expected " (to-string function-arity) " arguments, got " (to-string args-count) " instead"))
+              (when (!= (val-loc-type function-loc) `label)
+                (error "failed compilation: only function with label location are supported"))
+              (let ((arg-registers system-v-call-arg-registers)
+                    (function-label (val-loc-value function-loc)))
+                (iter args arg
+                      (let ((arg-loc (compile-form arg))
+                            (arg-val (loc-to-asm arg-loc))
+                            (arg-reg (car arg-registers)))
+                        (emit-asm "movq " arg-val ", " arg-reg "\n"))
+                      (set arg-registers (cdr arg-registers)))
+                (emit-asm "call " function-label "\n"))
+              (make-val-loc `register
+                            "%rax"))))))
+
+(func gen-start-asm ()
+      (concat out-asm-main-proc-name
+              ":\n"
+              out-asm-main-proc-body
+              "\n"
+              "\tmovq $60, %rax\n"
+              "\tmovq $0, %rdi\n"
+              "\tsyscall\n"))
+
+(func compile (contents)
+      (let ((forms (read contents)))
+        (iter forms form
+              (compile-form form))
+        (concat! out-asm (gen-start-asm) out-asm-rodata)))
+
+(compile input-contents)
+
+(print-string out-asm)
