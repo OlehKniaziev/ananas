@@ -100,6 +100,10 @@ B32 AnanasLexerNext(AnanasLexer *lexer, HeliosAllocator allocator, AnanasToken *
                     AnanasDStringPush(&string_value, '\r');
                     break;
                 }
+                case 't': {
+                    AnanasDStringPush(&string_value, '\t');
+                    break;
+                }
                 case '\\': {
                     AnanasDStringPush(&string_value, '\\');
                     break;
