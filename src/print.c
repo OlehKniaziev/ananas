@@ -78,3 +78,9 @@ HeliosStringView AnanasPrint(HeliosAllocator allocator, AnanasValue node) {
     }
     }
 }
+
+void AnanasPrintStdout(AnanasValue value) {
+    HeliosAllocator temp = HeliosGetTempAllocator();
+    HeliosStringView string = AnanasPrint(temp, value);
+    printf(HELIOS_SV_FMT "\n", HELIOS_SV_ARG(string));
+}
