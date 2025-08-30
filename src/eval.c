@@ -837,6 +837,9 @@ static B32 AnanasUnquoteForm(AnanasList *args,
             }
 
             AnanasValue unquote_arg = unquote_args->car;
+            if (unquote_arg.type == AnanasValueType_List) {
+                unquote_arg.u.list = AnanasListCopy(arena, unquote_arg.u.list);
+            }
             if (!AnanasEval(unquote_arg, arena, env, &current_args->car, error_ctx)) return 0;
         } else if (HeliosStringViewEqualCStr(car_symbol, "unquote-splice")) {
             AnanasList *unquote_args = arg_list->cdr;
@@ -857,7 +860,7 @@ static B32 AnanasUnquoteForm(AnanasList *args,
             if (unquoted_form.type != AnanasValueType_List || unquoted_form.u.list == NULL) {
                 current_args->car = unquoted_form;
             } else {
-                AnanasList *unquoted_list = unquoted_form.u.list;
+                AnanasList *unquoted_list = AnanasListCopy(arena, unquoted_form.u.list);
                 if (unquoted_list != NULL) {
                     AnanasList *current_unquoted_list = unquoted_list;
                     while (current_unquoted_list->cdr != NULL) {
