@@ -341,10 +341,14 @@
               "\tmovq $0, %rdi\n"
               "\tsyscall\n"))
 
+(func align-up (x a)
+      (+ x (rem (- a (rem x a)) a)))
+
 (func gen-procs-asm ()
       (let ((asm ""))
         (iter procs-list proc
-              (let ((stack-size (to-string (proc-stack-size proc))))
+              (let ((stack-size (to-string
+                                 (align-up (proc-stack-size proc) 16))))
                 (concat! asm
                          (to-string (proc-name proc))
                          ":\n"
