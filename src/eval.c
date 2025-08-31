@@ -36,6 +36,7 @@ void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator alloca
     X("+", AnanasPlus) \
     X("-", AnanasMinus) \
     X("*", AnanasStar) \
+    X("rem", AnanasRem) \
     X("to-string", AnanasToString) \
     X("error", AnanasError)
 
@@ -822,6 +823,22 @@ ANANAS_DECLARE_NATIVE_FUNCTION(AnanasStar) {
 
     result->type = AnanasValueType_Int;
     result->u.integer = lhs * rhs;
+    return 1;
+}
+
+ANANAS_DECLARE_NATIVE_FUNCTION(AnanasRem) {
+    (void) arena;
+
+    ANANAS_CHECK_ARGS_COUNT(2);
+
+    ANANAS_CHECK_ARG_TYPE(0, Int, lhs);
+    ANANAS_CHECK_ARG_TYPE(1, Int, rhs);
+
+    S64 lhs = lhs_arg.u.integer;
+    S64 rhs = rhs_arg.u.integer;
+
+    result->type = AnanasValueType_Int;
+    result->u.integer = lhs % rhs;
     return 1;
 }
 
