@@ -259,7 +259,7 @@
                      ;;  (make-val-loc `label (to-string name)))
                      (let ((proc (current-proc))
                            (env (proc-env proc))
-                           (var-loc (make-val-loc `stack (proc-stack-size proc)))
+                           (var-loc (make-val-loc `stack (+ (proc-stack-size proc) 8)))
                            (var-desc (make-val-desc type var-loc)))
                        (modify-current-proc (lambda (proc)
                                               (make-proc (proc-name proc)
