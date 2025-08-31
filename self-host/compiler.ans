@@ -333,11 +333,21 @@
                        (error (concat "failed compilation: expected 'var' name to be a symbol, got " (to-string (type)) " instead")))
                    (let ((var-type (lookup-decl var-name))
                          (var-value-desc (compile-form var-value))
-                         (var-value-asm (loc-to-asm (val-desc-loc var-value-desc)))
-                         (var-loc (allocate-var (list var-type) var-name))
-                         (var-asm (loc-to-asm var-loc)))
-                     (emit-asm "\tmovq " var-value-asm ", " var-asm "\n")
-                     (make-val-desc (list var-type) var-loc))))
+                         (var-value-type (car (val-desc-type var-value-desc))))
+                     (if (!= var-type var-value-type)
+                         (error (concat "failed compilation: expected variable "
+                                        (to-string var-name)
+                                        " to have type "
+                                        (to-string var-type)
+                                        " due to a previous declaration, but the initializer expression "
+                                        (to-string var-value)
+                                        " has type "
+                                        (to-string var-value-type))))
+                     (let ((var-value-asm (loc-to-asm (val-desc-loc var-value-desc)))
+                           (var-loc (allocate-var (list var-type) var-name))
+                           (var-asm (loc-to-asm var-loc)))
+                       (emit-asm "\tmovq " var-value-asm ", " var-asm "\n")
+                       (make-val-desc (list var-type) var-loc)))))
                 (else
                  (let ((function-desc (compile-form c)))
                    (when (not function-desc)
