@@ -32,7 +32,10 @@
                            `(error "switch cases exhausted")))))
            (error "no forms passed to `switch` macro")))
 
-(macro loop (cont-name . body) `(let ((,cont-name (lambda () ,~body)))
+(macro loop (cont-name . body) `(let ((-should-break false)
+                                      (break (lambda () (set -should-break true)))
+                                      (,cont-name (lambda ()
+                                                    (if (not -should-break) (do ,~body)))))
                                 (,cont-name)))
 
 (macro iter (list elem . forms)
@@ -83,7 +86,7 @@
                (modify-current-proc (lambda (proc)
                                       (make-proc (proc-name proc)
                                                  asm
-                                                 (proc-vars proc))))))))
+                                                 (proc-env proc))))))))
 
 (var temps-count 0)
 
@@ -140,7 +143,7 @@
 (func current-vars ()
       (if (is-top-level)
           global-variables
-          (proc-vars (current-proc))))
+          (env-vars (proc-env (current-proc)))))
 
 (func lookup-symbol (name)
       (let ((var-desc false)
@@ -228,7 +231,9 @@
                     (continue))))
         (set procs-list after)))
 
-(struct proc name body vars)
+(struct decl name type)
+(struct env vars decls)
+(struct proc name body env)
 
 (var lambda-counter 0)
 
@@ -238,13 +243,13 @@
 
 (func begin-proc (name)
       (cons! 0 procs-ptr-stack)
-      (cons! (make-proc name "" `()) procs-list))
+      (cons! (make-proc name "" (make-env `() `())) procs-list))
 
 (func end-proc ()
       (set procs-ptr-stack (cdr procs-ptr-stack)))
 
 (func proc-stack-size (proc)
-      (* (len (proc-vars proc)) 8))
+      (* (len (env-vars (proc-env proc))) 8))
 
 (func allocate-var (type name)
       (let ((loc (if (is-top-level)
@@ -253,14 +258,33 @@
                      ;;  (concat! out-asm-data-section (to-string name) ": .skip 8, 0\n")
                      ;;  (make-val-loc `label (to-string name)))
                      (let ((proc (current-proc))
+                           (env (proc-env proc))
                            (var-loc (make-val-loc `stack (proc-stack-size proc)))
                            (var-desc (make-val-desc type var-loc)))
                        (modify-current-proc (lambda (proc)
                                               (make-proc (proc-name proc)
                                                          (proc-body proc)
-                                                         (cons `(,name ,var-desc) (proc-vars proc)))))
+                                                         (make-env (cons `(,name ,var-desc) (env-vars env))
+                                                                   (env-decls env)))))
                        var-loc))))
         loc))
+
+(func lookup-decl (name)
+      (if (is-top-level)
+          (error "TODO: support top-level decls")
+          (let ((found-decl-type false)
+                (proc (current-proc))
+                (env (proc-env proc))
+                (decls (env-decls env)))
+            (iter decls decl
+                  (when (= (decl-name decl) name)
+                    (set found-decl-type (decl-type decl))
+                    (break)))
+            (or found-decl-type
+                (error (concat
+                        "failed compilation: did not find a declaration for symbol "
+                        (to-string name)
+                        " in scope"))))))
 
 (func compile-list (l)
       (when (empty? l)
@@ -269,9 +293,21 @@
             (args (cdr l))
             (args-count (len args)))
         (switch c
+                (`decl
+                 (if (or (= (len args) 0) (= (len args) 1))
+                     (error "failed compilation: not enough arguments passed to 'decl'"))
+                 (let ((decl-name (car args))
+                       (decl-type (car (cdr args))))
+                   (modify-current-proc (lambda (p)
+                                          (let ((env (proc-env p)))
+                                            (make-proc (proc-name p)
+                                                       (proc-body p)
+                                                       (make-env (env-vars env)
+                                                                 (cons (make-decl decl-name decl-type)
+                                                                       (env-decls env)))))))))
                 (`lambda
-                  (if (= (len args) 0)
-                      (error "failed compilation: no arguments passed to 'lambda"))
+                    (if (= (len args) 0)
+                        (error "failed compilation: no arguments passed to 'lambda"))
                   (let ((lambda-params (car args))
                         (lambda-body (cdr args))
                         (lambda-name (random-lambda-name)))
@@ -285,7 +321,7 @@
                     (iter lambda-body form
                           (compile-form form))
                     (end-proc)
-                    (make-val-desc `(function ,(len lambda-params))
+                    (make-val-desc (list `function (len lambda-params))
                                    (make-val-loc `label
                                                  lambda-name))))
                 (`var
@@ -295,12 +331,13 @@
                        (var-value (car (cdr args))))
                    (if (!= (type var-name) `symbol)
                        (error (concat "failed compilation: expected 'var' name to be a symbol, got " (to-string (type)) " instead")))
-                   (let ((var-value-desc (compile-form var-value))
+                   (let ((var-type (lookup-decl var-name))
+                         (var-value-desc (compile-form var-value))
                          (var-value-asm (loc-to-asm (val-desc-loc var-value-desc)))
-                         (var-loc (allocate-var `(box) var-name))
+                         (var-loc (allocate-var (list var-type) var-name))
                          (var-asm (loc-to-asm var-loc)))
                      (emit-asm "\tmovq " var-value-asm ", " var-asm "\n")
-                     (make-val-desc `(box) var-loc))))
+                     (make-val-desc (list var-type) var-loc))))
                 (else
                  (let ((function-desc (compile-form c)))
                    (when (not function-desc)
