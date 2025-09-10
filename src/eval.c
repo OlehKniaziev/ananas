@@ -38,7 +38,8 @@ void AnanasEnvInit(AnanasEnv *env, AnanasEnv *parent_env, HeliosAllocator alloca
     X("*", AnanasStar) \
     X("rem", AnanasRem) \
     X("to-string", AnanasToString) \
-    X("error", AnanasError)
+    X("error", AnanasError) \
+    X("apply", AnanasApply)
 
 #define X(name, func) ANANAS_DECLARE_NATIVE_FUNCTION(func);
 ANANAS_ENUM_NATIVE_FUNCTIONS
@@ -869,6 +870,63 @@ ANANAS_DECLARE_NATIVE_FUNCTION(AnanasError) {
     ANANAS_NATIVE_BAIL_FMT(HELIOS_SV_FMT, HELIOS_SV_ARG(msg));
 }
 
+ANANAS_DECLARE_NATIVE_FUNCTION(AnanasApply) {
+    (void) arena;
+
+    if (args.count == 0) {
+        ANANAS_NATIVE_BAIL("not enough arguments for 'apply'");
+    }
+
+    ANANAS_CHECK_ARG_TYPE(0, Function, fn);
+
+    AnanasFunction *function = fn_arg.u.function;
+
+    AnanasList *args_list = NULL;
+    AnanasList *current_args_list = NULL;
+
+#define APPEND(val) do { \
+    AnanasList *car = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList); \
+    car->car = (val); \
+    if (args_list == NULL) { \
+        args_list = (car); \
+        current_args_list = (car); \
+    } else { \
+        current_args_list->cdr = (car); \
+        current_args_list = (car); \
+    } \
+} while (0)
+
+    for (UZ i = 1; i < args.count - 1; ++i) {
+        AnanasValue arg = AnanasArgAt(args, i);
+        APPEND(arg);
+    }
+
+    AnanasValue last_arg = AnanasArgAt(args, args.count - 1);
+
+    if (last_arg.type != AnanasValueType_List) {
+        ANANAS_NATIVE_BAIL_FMT("expected the last argument passed to 'apply' to be of type list, got a value of type %s instead",
+                               AnanasTypeName(last_arg.type));
+    }
+
+    AnanasList *list = last_arg.u.list;
+    while (list != NULL) {
+        APPEND(list->car);
+        list = list->cdr;
+    }
+
+    #undef APPEND
+
+    AnanasEnv *env = NULL;
+    if (!function->is_native) env = function->u.user.enclosing_env;
+
+    return AnanasEvalFunctionWithArgumentList(function,
+                                              args_list,
+                                              where,
+                                              arena,
+                                              env,
+                                              error_ctx,
+                                              result);
+}
 static B32 AnanasUnquoteForm(AnanasList *args,
                              AnanasArena *arena,
                              AnanasEnv *env,
