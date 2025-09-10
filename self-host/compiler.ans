@@ -172,12 +172,15 @@
               (inc! count))
         count))
 
-(func compile-form (form)
-      (let ((form-type (type form)))
-        (switch form-type
+(func compile-form (form . form-type)
+      (let ((t (type form)))
+        (switch t
                 (`int (emit-const-int form))
                 (`symbol (lookup-symbol form))
-                (`list (compile-list form)))))
+                (`list (if (empty? form-type)
+                         (compile-list form)
+                         (compile-list form (car form-type))))
+                (else (error "TODO")))))
 
 (func loc-to-asm (loc)
       (switch (val-loc-type loc)
@@ -312,6 +315,9 @@
                    (set r (cdr r))
                    (continue)))))
              result))
+          ((or (= (type lhs) `symbol)
+               (= (type rhs) `symbol))
+           (= lhs rhs))
           (else (error (concat
                          "TODO: report an error in types-are-equal (lhs = "
                          (to-string lhs)
@@ -328,7 +334,18 @@
            (not-empty? t)
            (= (car t) `->)))
 
-(func compile-list (l)
+(func times (x n)
+      (let ((count 0)
+            (result (list)))
+        (loop continue
+          (if (= count n)
+            result
+            (do
+              (inc! count)
+              (cons! x result)
+              (continue))))))
+
+(func compile-list (l . lam-t)
       (when (empty? l)
         (error "failed compilation: cannot compile an empty list"))
       (let ((c (car l))
@@ -348,43 +365,53 @@
                                                                  (cons (make-decl decl-name decl-type)
                                                                        (env-decls env)))))))))
                 (`lambda
-                    (if (= (len args) 0)
+                  (if (= (len args) 0)
                         (error "failed compilation: no arguments passed to 'lambda"))
-                  (let ((lambda-params (car args))
+                  (let ((lambda-type (if (empty? lam-t)
+                                       false
+                                       (car lam-t)))
+                        (lambda-params (car args))
                         (lambda-body (cdr args))
                         (lambda-name (random-lambda-name))
-                        (lambda-params-types (list))
-                        (lambda-return-type `box)
-                        (lambda-arg-registers system-v-call-arg-registers))
+                        (lambda-params-types (if lambda-type
+                                               (reverse (cdr (reverse (cdr lambda-type))))
+                                               (times `box (len lambda-params))))
+                        (lambda-return-type (if lambda-type (car (reverse lambda-type)) `box))
+                        (lambda-arg-registers system-v-call-arg-registers)
+                        (lambda-param-idx 0))
+                    (if (and lambda-type (!= (len lambda-params-types) (len lambda-params)))
+                      (error (concat "failed compilation: lambda expected to have "
+                                     (to-string (len lambda-params-types))
+                                     " params due to a previous declaration, but has "
+                                     (to-string (len lambda-params))
+                                     " params instead")))
                     (if (!= (type lambda-params) `list)
                         (error "failed compilation: lambda parameters should be a list"))
                     (begin-proc lambda-name)
                     (iter lambda-params param
                           (if (!= (type param) `symbol)
                               (error "failed compilation: all lambda params should be of type symbol"))
-                          ;; TODO(oleh): Make value descriptors that point to argument registers instead of this var-alloc stuff.
                           (modify-current-proc (lambda (p)
                                                        (let ((env (proc-env p)))
                                                          (make-proc (proc-name p)
                                                                     (proc-body p)
                                                                     (make-env (cons (list param
-                                                                                          (make-val-desc `box
+                                                                                          (make-val-desc (at lambda-params-types lambda-param-idx)
                                                                                                    (make-val-loc `register
                                                                                                                  (car lambda-arg-registers))))
                                                                                     (env-vars env))
                                                                               (env-decls env))))))
-                          (set lambda-arg-registers (cdr lambda-arg-registers))
-                          ;; TODO(oleh): This should not be `box`, but the type of the argument should be taken from the declaration,
-                          ;; and be `box` only if a declaration is not present and the lambda is not bound to a name.
-                          (cons! `box lambda-params-types))
+                          (inc! lambda-param-idx)
+                          (set lambda-arg-registers (cdr lambda-arg-registers)))
                     (iter lambda-body form
                           (set lambda-return-type
                                (val-desc-type (compile-form form))))
                     (end-proc)
-                    (make-val-desc (cons `->
-                                               (reverse
-                                                 (cons lambda-return-type
-                                                       lambda-params-types)))
+                    (make-val-desc (if lambda-type
+                                     lambda-type
+                                     (list `->
+                                           (reverse (cons lambda-return-type
+                                                          (reverse lambda-params-types)))))
                                    (make-val-loc `label
                                                  lambda-name))))
                 (`var
@@ -393,9 +420,9 @@
                  (let ((var-name (car args))
                        (var-value (car (cdr args))))
                    (if (!= (type var-name) `symbol)
-                       (error (concat "failed compilation: expected 'var' name to be a symbol, got " (to-string (type)) " instead")))
+                       (error (concat "failed compilation: expected 'var' name to be a symbol, got " (to-string (type var-name)) " instead")))
                    (let ((var-type (lookup-decl var-name))
-                         (var-value-desc (compile-form var-value))
+                         (var-value-desc (compile-form var-value var-type))
                          (var-value-type (val-desc-type var-value-desc)))
                      (if (not (types-are-equal var-type var-value-type))
                          (error (concat "failed compilation: expected variable "
