@@ -1,3 +1,5 @@
+;; TODO(oleh): Change the all `function` types to be of form (-> parameter types... return type)
+
 (macro func (name args . body) `(var ,name (lambda ,args (do ,~body))))
 
 (func not (b) (if (= b false) true false))
@@ -9,13 +11,20 @@
        `(if ,cond
             (do ,~forms)))
 
-(macro cond (. forms)
-       (if (not-empty? forms)
-           (let ((rest (cdr (cdr forms))))
-             (list `if
-                   (car forms)
-                   (car (cdr forms))
-                   (if (not-empty? rest) `(cond ,~rest))))))
+(macro cond (. cases)
+       (if (not-empty? cases)
+           (let ((case-pair (car cases))
+                 (case-cond (car case-pair))
+                 (case-consequence (cdr case-pair))
+                 (rest (cdr cases)))
+             (if (= case-cond `else)
+                 `(do ,~case-consequence)
+                 `(if ,case-cond
+                      (do ,~case-consequence)
+                      ,(if (not-empty? rest)
+                           `(cond ,~rest)
+                           `(error "cond cases exhausted")))))
+           (error "no forms passed to `cond` macro")))
 
 (macro switch (value . cases)
        (if (not-empty? cases)
@@ -100,7 +109,7 @@
 
 (struct val-loc type value)
 
-(struct function symbol name arity source)
+(struct function symbol name type source)
 
 (var builtin-+-source
      (concat
@@ -119,8 +128,8 @@
 
 (var builtin-functions
      (list
-      (make-function `+ "ananas_builtin_plus" 2 builtin-+-source)
-      (make-function `print-int "ananas_builtin_print_int" 1 builtin-print-int-source)))
+      (make-function `+ "ananas_builtin_plus" `(int int int) builtin-+-source)
+      (make-function `print-int "ananas_builtin_print_int" `(int int) builtin-print-int-source)))
 
 (macro cons! (car cdr)
        `(set ,cdr (cons ,car ,cdr)))
@@ -133,12 +142,12 @@
        (list
         (function-symbol fn)
         (make-val-desc
-         `(function ,(function-arity fn))
+         `(-> ,~(function-type fn))
          (make-val-loc `label (function-name fn))))
        global-variables))
 
 (func emit-const-int (c)
-      (make-val-desc `(int) (make-val-loc `imm c)))
+      (make-val-desc `int (make-val-loc `imm c)))
 
 (func current-vars ()
       (if (is-top-level)
@@ -189,13 +198,10 @@
 (var -1 (- 0 1))
 
 (var procs-list `())
-(var procs-ptr-stack (list -1))
-
-(func procs-ptr ()
-      (car procs-ptr-stack))
+(var procs-stack `())
 
 (func is-top-level ()
-      (= (procs-ptr) -1))
+      (empty? procs-stack))
 
 (func at (l n)
       (let ((list l)
@@ -211,25 +217,11 @@
                     (continue))))))
 
 (func current-proc ()
-      (at procs-list (procs-ptr)))
+      (car procs-stack))
 
 (func modify-current-proc (lam)
-      (let ((before `())
-            (after procs-list)
-            (new-proc (lam (current-proc)))
-            (counter 0))
-        (loop continue
-              (if (= (procs-ptr) counter)
-                  (do
-                   (set after (cons new-proc (cdr after)))
-                   (iter before c
-                         (cons! c after)))
-                  (do
-                   (inc! counter)
-                   (cons! (car after) before)
-                    (set after (cdr after))
-                    (continue))))
-        (set procs-list after)))
+      (let ((new-proc (lam (current-proc))))
+        (set procs-stack (cons new-proc (cdr procs-stack)))))
 
 (struct decl name type)
 (struct env vars decls)
@@ -242,24 +234,24 @@
       (concat "lambda" (to-string lambda-counter)))
 
 (func begin-proc (name)
-      (cons! 0 procs-ptr-stack)
-      (cons! (make-proc name "" (make-env `() `())) procs-list))
+      (cons! (make-proc name "" (make-env `() `())) procs-stack))
 
 (func end-proc ()
-      (set procs-ptr-stack (cdr procs-ptr-stack)))
+      (cons! (current-proc) procs-list)
+      (set procs-stack (cdr procs-stack)))
 
 (func proc-stack-size (proc)
       (* (len (env-vars (proc-env proc))) 8))
 
-(func allocate-var (type name)
+(func allocate-var (type name . func-loc)
       (let ((loc (if (is-top-level)
                      (error "TODO: support top-level variables")
-                     ;; (do
-                     ;;  (concat! out-asm-data-section (to-string name) ": .skip 8, 0\n")
-                     ;;  (make-val-loc `label (to-string name)))
                      (let ((proc (current-proc))
                            (env (proc-env proc))
-                           (var-loc (make-val-loc `stack (+ (proc-stack-size proc) 8)))
+                           (var-loc (if (type-is-function type)
+                                      ;; TODO(oleh): This is bad if we want to store procedures on the stack.
+                                      (car func-loc)
+                                      (make-val-loc `stack (+ (proc-stack-size proc) 8))))
                            (var-desc (make-val-desc type var-loc)))
                        (modify-current-proc (lambda (proc)
                                               (make-proc (proc-name proc)
@@ -286,6 +278,56 @@
                         (to-string name)
                         " in scope"))))))
 
+(func lookup-proc (name)
+      (let ((result false))
+        (iter procs-list proc
+              (when (= (proc-name proc))
+                (set result proc)
+                (break)))
+        result))
+
+(func reverse (l)
+      (let ((result (list)))
+        (iter l elem
+              (cons! elem result))
+        result))
+
+(func types-are-equal (lhs rhs)
+      (if (or (= lhs `box) (= rhs `box) (= lhs rhs))
+        true
+        (cond
+          ((and (= (type lhs) `list) (= (type rhs) `list))
+           (let ((l lhs)
+                 (r rhs)
+                 (result true))
+             (loop continue
+               (cond
+                 ((or (empty? l) (empty? r))
+                  (break))
+               ((not (types-are-equal (car l) (car r)))
+                 (set result false))
+                 (else
+                   (do
+                   (set l (cdr l))
+                   (set r (cdr r))
+                   (continue)))))
+             result))
+          (else (error (concat
+                         "TODO: report an error in types-are-equal (lhs = "
+                         (to-string lhs)
+                         ", rhs = "
+                         (to-string rhs)
+                         ") |"
+                         (to-string (type lhs))
+                         ", "
+                         (to-string (type rhs))
+                         "|"))))))
+
+(func type-is-function (t)
+      (and (= (type t) `list)
+           (not-empty? t)
+           (= (car t) `->)))
+
 (func compile-list (l)
       (when (empty? l)
         (error "failed compilation: cannot compile an empty list"))
@@ -310,18 +352,39 @@
                         (error "failed compilation: no arguments passed to 'lambda"))
                   (let ((lambda-params (car args))
                         (lambda-body (cdr args))
-                        (lambda-name (random-lambda-name)))
+                        (lambda-name (random-lambda-name))
+                        (lambda-params-types (list))
+                        (lambda-return-type `box)
+                        (lambda-arg-registers system-v-call-arg-registers))
                     (if (!= (type lambda-params) `list)
                         (error "failed compilation: lambda parameters should be a list"))
+                    (begin-proc lambda-name)
                     (iter lambda-params param
                           (if (!= (type param) `symbol)
                               (error "failed compilation: all lambda params should be of type symbol"))
-                          (allocate-var `(box) param))
-                    (begin-proc lambda-name)
+                          ;; TODO(oleh): Make value descriptors that point to argument registers instead of this var-alloc stuff.
+                          (modify-current-proc (lambda (p)
+                                                       (let ((env (proc-env p)))
+                                                         (make-proc (proc-name p)
+                                                                    (proc-body p)
+                                                                    (make-env (cons (list param
+                                                                                          (make-val-desc `box
+                                                                                                   (make-val-loc `register
+                                                                                                                 (car lambda-arg-registers))))
+                                                                                    (env-vars env))
+                                                                              (env-decls env))))))
+                          (set lambda-arg-registers (cdr lambda-arg-registers))
+                          ;; TODO(oleh): This should not be `box`, but the type of the argument should be taken from the declaration,
+                          ;; and be `box` only if a declaration is not present and the lambda is not bound to a name.
+                          (cons! `box lambda-params-types))
                     (iter lambda-body form
-                          (compile-form form))
+                          (set lambda-return-type
+                               (val-desc-type (compile-form form))))
                     (end-proc)
-                    (make-val-desc (list `function (len lambda-params))
+                    (make-val-desc (cons `->
+                                               (reverse
+                                                 (cons lambda-return-type
+                                                       lambda-params-types)))
                                    (make-val-loc `label
                                                  lambda-name))))
                 (`var
@@ -333,8 +396,8 @@
                        (error (concat "failed compilation: expected 'var' name to be a symbol, got " (to-string (type)) " instead")))
                    (let ((var-type (lookup-decl var-name))
                          (var-value-desc (compile-form var-value))
-                         (var-value-type (car (val-desc-type var-value-desc))))
-                     (if (!= var-type var-value-type)
+                         (var-value-type (val-desc-type var-value-desc)))
+                     (if (not (types-are-equal var-type var-value-type))
                          (error (concat "failed compilation: expected variable "
                                         (to-string var-name)
                                         " to have type "
@@ -343,28 +406,31 @@
                                         (to-string var-value)
                                         " has type "
                                         (to-string var-value-type))))
-                     (let ((var-value-asm (loc-to-asm (val-desc-loc var-value-desc)))
-                           (var-loc (allocate-var (list var-type) var-name))
-                           (var-asm (loc-to-asm var-loc)))
-                       (emit-asm "\tmovq " var-value-asm ", " var-asm "\n")
-                       (make-val-desc (list var-type) var-loc)))))
+                     (if (type-is-function var-type)
+                       (do
+                         (allocate-var var-type var-name (val-desc-loc var-value-desc)))
+                       (let ((var-value-asm (loc-to-asm (val-desc-loc var-value-desc)))
+                             (var-loc (allocate-var var-type var-name))
+                             (var-asm (loc-to-asm var-loc)))
+                         (emit-asm "\tmovq " var-value-asm ", " var-asm "\n")
+                         (make-val-desc var-type var-loc))))))
                 (else
                  (let ((function-desc (compile-form c)))
                    (when (not function-desc)
                      (error (concat "failed compilation: unbound symbol '" (to-string c) "'")))
                    (let ((function-type (val-desc-type function-desc)))
-                     (when (!= (car function-type) `function)
+                     (when (not (type-is-function function-type))
                        (error "failed compilation: list's car does not evaluate to a function"))
-                     (let ((function-arity (car (cdr function-type)))
+                     (let ((function-arity (- (len function-type) 2))
                            (function-loc (val-desc-loc function-desc)))
+                       (when (!= (val-loc-type function-loc) `label)
+                         (error "TODO"))
                        (when (!= args-count function-arity)
                          (error (concat "failed compilation: expected "
                                         (to-string function-arity)
                                         " arguments, got "
                                         (to-string args-count)
                                         " instead")))
-                       (when (!= (val-loc-type function-loc) `label)
-                         (error "failed compilation: only function with label location are supported"))
                        (let ((arg-registers system-v-call-arg-registers)
                              (function-label (val-loc-value function-loc)))
                          (iter args arg
@@ -375,7 +441,7 @@
                                  (emit-asm "\tmovq " arg-val ", " arg-reg "\n"))
                                (set arg-registers (cdr arg-registers)))
                          (emit-asm "\tcall " function-label "\n"))
-                       (make-val-desc `(box)
+                       (make-val-desc `box
                                       (make-val-loc `register
                                                     "%rax")))))))))
 
