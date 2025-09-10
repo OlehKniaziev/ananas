@@ -14,6 +14,8 @@ static B32 AnanasIsReaderMacroChar(HeliosChar c) {
 static B32 AnanasIsFirstSymbolChar(HeliosChar c) {
     return HeliosCharIsAlpha(c)
            || c == '-'
+           || c == '<'
+           || c == '>'
            || c == '_'
            || c == '/'
            || c == '+'
