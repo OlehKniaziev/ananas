@@ -345,6 +345,9 @@
               (cons! x result)
               (continue))))))
 
+(func function-type-args (t)
+      (reverse (cdr (reverse (cdr t)))))
+
 (func compile-list (l . lam-t)
       (when (empty? l)
         (error "failed compilation: cannot compile an empty list"))
@@ -374,7 +377,7 @@
                         (lambda-body (cdr args))
                         (lambda-name (random-lambda-name))
                         (lambda-params-types (if lambda-type
-                                               (reverse (cdr (reverse (cdr lambda-type))))
+                                               (function-type-args lambda-type)
                                                (times `box (len lambda-params))))
                         (lambda-return-type (if lambda-type (car (reverse lambda-type)) `box))
                         (lambda-arg-registers system-v-call-arg-registers)
@@ -448,7 +451,8 @@
                    (let ((function-type (val-desc-type function-desc)))
                      (when (not (type-is-function function-type))
                        (error "failed compilation: list's car does not evaluate to a function"))
-                     (let ((function-arity (- (len function-type) 2))
+                     (let ((function-param-types (function-type-args function-type))
+                           (function-arity (len function-param-types))
                            (function-loc (val-desc-loc function-desc)))
                        (when (!= (val-loc-type function-loc) `label)
                          (error "TODO"))
@@ -459,13 +463,25 @@
                                         (to-string args-count)
                                         " instead")))
                        (let ((arg-registers system-v-call-arg-registers)
-                             (function-label (val-loc-value function-loc)))
+                             (function-label (val-loc-value function-loc))
+                             (function-param-idx 0))
                          (iter args arg
-                               (let ((arg-desc (compile-form arg))
+                               (let ((param-type (at function-param-types function-param-idx))
+                                     (arg-desc (compile-form arg))
                                      (arg-loc (val-desc-loc arg-desc))
                                      (arg-val (loc-to-asm arg-loc))
                                      (arg-reg (car arg-registers)))
+                                 (if (not (types-are-equal (val-desc-type arg-desc)
+                                                           param-type))
+                                   (error (concat "compilation failed: expected argument at index "
+                                                  (to-string function-param-idx)
+                                                  " to have type "
+                                                  (to-string param-type)
+                                                  ", but it has type "
+                                                  (to-string (val-desc-type arg-desc))
+                                                  " instead")))
                                  (emit-asm "\tmovq " arg-val ", " arg-reg "\n"))
+                               (inc! function-param-idx)
                                (set arg-registers (cdr arg-registers)))
                          (emit-asm "\tcall " function-label "\n"))
                        (make-val-desc `box
