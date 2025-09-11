@@ -388,7 +388,7 @@
                                                (function-type-args lambda-type)
                                                (times `box (len lambda-params))))
                         (expected-lambda-return-type (if lambda-type (car (reverse lambda-type)) `box))
-                        (lambda-return-type false)
+                        (lambda-last-form-desc false)
                         (lambda-arg-registers system-v-call-arg-registers)
                         (lambda-param-idx 0))
                     (if (and lambda-type (!= (len lambda-params-types) (len lambda-params)))
@@ -399,6 +399,8 @@
                                      " params instead")))
                     (if (!= (type lambda-params) `list)
                         (error "failed compilation: lambda parameters should be a list"))
+                    (if (= (len lambda-body) 0)
+                      (error "failed compilation: lambda body cannot be empty"))
                     (begin-proc lambda-name)
                     (iter lambda-params param
                           (if (!= (type param) `symbol)
@@ -416,19 +418,20 @@
                           (inc! lambda-param-idx)
                           (set lambda-arg-registers (cdr lambda-arg-registers)))
                     (iter lambda-body form
-                          (set lambda-return-type
-                               (val-desc-type (compile-form form))))
-                    (end-proc)
-                    (if (!= lambda-return-type expected-lambda-return-type)
+                          (set lambda-last-form-desc
+                               (compile-form form)))
+                    (if (not (types-are-equal (val-desc-type lambda-last-form-desc) expected-lambda-return-type))
                       (error (concat "failed compilation: expected the lambda to return a value of type "
                                      (to-string expected-lambda-return-type)
                                      ", but got a value of type "
-                                     (to-string lambda-return-type)
+                                     (to-string (val-desc-type lambda-last-form-desc))
                                      " instead")))
+                    (emit-asm "\tmovq " (loc-to-asm (val-desc-loc lambda-last-form-desc)) ", %rax\n")
+                    (end-proc)
                     (make-val-desc (if lambda-type
                                      lambda-type
                                      (list `->
-                                           (reverse (cons lambda-return-type
+                                           (reverse (cons (val-desc-type lambda-last-form-desc)
                                                           (reverse lambda-params-types)))))
                                    (make-val-loc `label
                                                  lambda-name))))
