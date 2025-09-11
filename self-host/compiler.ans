@@ -155,15 +155,23 @@
           (env-vars (proc-env (current-proc)))))
 
 (func lookup-symbol (name)
-      (let ((var-desc false)
-            (variables (current-vars)))
-        (iter variables var
-              (if (and (not var-desc) (= (car var) name))
-                  (set var-desc (car (cdr var)))))
+      (let ((procs procs-stack)
+            (var-desc false))
+        (loop continue
+          (if (empty? procs)
+            (break)
+            (let ((proc (car procs))
+                  (variables (env-vars (proc-env proc))))
+              (iter variables var
+                    (if (and (not var-desc) (= (car var) name))
+                      (set var-desc (car (cdr var)))))
+              (when (not var-desc)
+                (set procs (cdr procs))
+                (continue)))))
         (if (not var-desc)
-            (iter global-variables var
-                  (if (and (not var-desc) (= (car var) name))
-                      (set var-desc (car (cdr var))))))
+          (iter global-variables var
+                (if (and (not var-desc) (= (car var) name))
+                  (set var-desc (car (cdr var))))))
         (or var-desc (error (concat "failed compilation: unbound symbol " (to-string name))))))
 
 (func len (l)
