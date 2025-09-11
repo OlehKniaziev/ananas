@@ -387,7 +387,8 @@
                         (lambda-params-types (if lambda-type
                                                (function-type-args lambda-type)
                                                (times `box (len lambda-params))))
-                        (lambda-return-type (if lambda-type (car (reverse lambda-type)) `box))
+                        (expected-lambda-return-type (if lambda-type (car (reverse lambda-type)) `box))
+                        (lambda-return-type false)
                         (lambda-arg-registers system-v-call-arg-registers)
                         (lambda-param-idx 0))
                     (if (and lambda-type (!= (len lambda-params-types) (len lambda-params)))
@@ -418,6 +419,12 @@
                           (set lambda-return-type
                                (val-desc-type (compile-form form))))
                     (end-proc)
+                    (if (!= lambda-return-type expected-lambda-return-type)
+                      (error (concat "failed compilation: expected the lambda to return a value of type "
+                                     (to-string expected-lambda-return-type)
+                                     ", but got a value of type "
+                                     (to-string lambda-return-type)
+                                     " instead")))
                     (make-val-desc (if lambda-type
                                      lambda-type
                                      (list `->
