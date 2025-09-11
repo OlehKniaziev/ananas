@@ -3,6 +3,7 @@
 #include "eval.h"
 #include "print.h"
 #include "common.h"
+#include "son.h"
 
 static void AnanasEvalFile(AnanasArena *arena, HeliosStringView file_path) {
     HeliosAllocator allocator = AnanasArenaToHeliosAllocator(arena);
@@ -47,13 +48,72 @@ static void AnanasEvalFile(AnanasArena *arena, HeliosStringView file_path) {
     }
 }
 
+static void AnanasCompileFile(AnanasArena *arena, HeliosStringView file_path) {
+    HeliosAllocator allocator = AnanasArenaToHeliosAllocator(arena);
+
+    HeliosStringView file_contents = HeliosReadEntireFile(allocator, file_path);
+    if (file_contents.data == NULL) {
+        fprintf(stderr, "Failed to read the file\n");
+        exit(1);
+    }
+
+    HeliosString8Stream source;
+    HeliosString8StreamInit(&source, file_contents.data, file_contents.count);
+
+    AnanasLexer lexer;
+    AnanasLexerInit(&lexer, &source);
+
+    U8 backing_error_buffer[1024];
+    HeliosStringView error_buffer = {.data = backing_error_buffer, .count = sizeof(backing_error_buffer)};
+    AnanasErrorContext error_ctx = {.ok = 1, .place = file_path, .error_buffer = error_buffer};
+
+    AnanasReaderTable reader_table;
+    AnanasReaderTableInit(&reader_table, allocator);
+
+    AnanasSON_CompilerState cstate = {0};
+    AnanasSON_CompilerStateInit(&cstate, arena);
+
+    AnanasValue value;
+    while (AnanasReaderNext(&lexer, &reader_table, arena, &value, &error_ctx)) {
+        AnanasSON_Node *node = AnanasSON_Compile(&cstate, value);
+        HELIOS_VERIFY(node != NULL);
+    }
+
+    if (!error_ctx.ok) {
+        fprintf(stderr, "Reader error: " HELIOS_SV_FMT "\n", HELIOS_SV_ARG(error_ctx.error_buffer));
+        exit(1);
+    }
+
+    HeliosString8 g = {.allocator = allocator};
+
+    AnanasSON_FormatNodeGraphInto(&cstate, &g);
+    printf(HELIOS_SV_FMT "\n", HELIOS_SV_ARG(g));
+
+    exit(0);
+}
+
 int main(int argc, char **argv) {
     AnanasArena arena;
     AnanasArenaInit(&arena, 64 * 1024 * 1024);
 
-    if (argc >= 2) {
-        HeliosStringView file_path = HELIOS_SV_LIT(argv[1]);
-        AnanasEvalFile(&arena, file_path);
+    if (argc == 2) {
+        fprintf(stderr, "not enough arguments");
+        return 1;
+    }
+
+    if (argc >= 3) {
+        const char *subcommand = argv[1];
+        if (strcmp(subcommand, "run") == 0) {
+            HeliosStringView file_path = HELIOS_SV_LIT(argv[2]);
+            AnanasEvalFile(&arena, file_path);
+        } else if (strcmp(subcommand, "com") == 0) {
+            HeliosStringView file_path = HELIOS_SV_LIT(argv[2]);
+            AnanasCompileFile(&arena, file_path);
+        } else {
+            fprintf(stderr, "unknown subcommand %s", subcommand);
+            return 1;
+        }
+
         HELIOS_UNREACHABLE();
     }
 

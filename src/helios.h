@@ -8,6 +8,7 @@
 #include <malloc.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdarg.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -86,6 +87,12 @@ extern "C" {
 #    define HELIOS_COMPILER_MSVC
 #endif
 
+#if defined(HELIOS_COMPILER_CLANG) || defined(HELIOS_COMPILER_GCC)
+#    define HELIOS_ANNOTATE_PRINTF(fmt, args) __attribute__((format(printf, fmt, args)))
+#else
+#    define HELIOS_ANNOTATE_PRINTF(fmt, args)
+#endif
+
 #define HELIOS_INTERNAL static
 
 #ifdef HELIOS_STATIC
@@ -101,6 +108,11 @@ extern "C" {
 #else
 #    error "Could not determine architecture bit size"
 #endif // word size check
+
+// TODO(oleh): This should store evaluated x and y in separate variables if typeof and expression block
+// extensions are available.
+#define HELIOS_MAX(x, y) ((x) > (y) ? (x) : (y))
+#define HELIOS_MIN(x, y) ((x) < (y) ? (x) : (y))
 
 typedef uint8_t  U8;
 typedef uint16_t U16;
@@ -276,6 +288,8 @@ HELIOS_INLINE B32 HeliosCharIsAlnum(HeliosChar c) {
 
 HELIOS_DEF HeliosString8 HeliosString8FromCStr(HeliosAllocator, const char *);
 HELIOS_DEF B32 HeliosString8FromCStrChecked(HeliosAllocator, const char *, HeliosString8 *);
+HELIOS_DEF void HeliosString8GrowIfNeeded(HeliosString8 *, UZ);
+HELIOS_DEF void HeliosString8FormatAppend(HeliosString8 *, const char *, ...) HELIOS_ANNOTATE_PRINTF(2, 3);
 
 typedef struct HeliosString8Stream {
     const U8 *data;
@@ -306,10 +320,6 @@ HELIOS_INLINE HeliosString8 HeliosString8FromStringView(HeliosAllocator allocato
 }
 
 HELIOS_DEF HeliosStringView HeliosReadEntireFile(HeliosAllocator, HeliosStringView);
-
-#ifdef __cplusplus
-    }
-#endif // __cplusplus
 
 #ifdef ASTRON_HELIOS_IMPLEMENTATION
 
@@ -529,6 +539,30 @@ HELIOS_DEF HeliosAllocator HeliosGetTempAllocator(void) {
 }
 #endif
 
+HELIOS_DEF void HeliosString8GrowIfNeeded(HeliosString8 *s, UZ size) {
+    if (s->capacity >= size) return;
+
+    UZ c = ((s->capacity + 1) * 3) >> 1;
+    UZ new_cap = HELIOS_MAX(size, c);
+    s->data = HeliosRealloc(s->allocator, s->data, s->count, new_cap);
+    s->capacity = new_cap;
+}
+
+HELIOS_DEF void HeliosString8FormatAppend(HeliosString8 *s, const char *fmt, ...) {
+    va_list vargs;
+    va_start(vargs, fmt);
+    S32 n = vsnprintf(NULL, 0, fmt, vargs) + 1;
+    va_end(vargs);
+
+    HeliosString8GrowIfNeeded(s, s->count + n);
+
+    va_start(vargs, fmt);
+    vsprintf((char *)s->data + s->count, fmt, vargs);
+    va_end(vargs);
+
+    s->count += n - 1;
+}
+
 HELIOS_DEF void HeliosString8StreamInit(HeliosString8Stream *stream, const U8 *data, UZ count) {
     stream->data = data;
     stream->byte_offset = (UZ)-1;
@@ -620,4 +654,9 @@ HELIOS_DEF HeliosStringView HeliosReadEntireFile(HeliosAllocator allocator, Heli
 }
 
 #endif // HELIOS_IMPLEMENTATION
+
+#ifdef __cplusplus
+    }
+#endif // __cplusplus
+
 #endif // HELIOS_H

@@ -31,12 +31,7 @@
         HELIOS_VERIFY(idx < arr->count);                                \
         return &arr->items[idx];                                        \
     }                                                                   \
-                                                                        \
-    HELIOS_INLINE const T *arrname##AtPC(const arrname *arr, UZ idx) {  \
-        HELIOS_VERIFY(idx < arr->count);                                \
-        return &arr->items[idx];                                        \
-    }                                                                   \
-                                                                        \
+    \
     HELIOS_INLINE void arrname##Free(arrname *arr) {                    \
         HeliosFree(arr->allocator, arr->items, sizeof(T) * arr->capacity); \
     }
