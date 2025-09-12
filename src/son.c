@@ -32,6 +32,7 @@ void AnanasSON_CompilerStateInit(AnanasSON_CompilerState *cstate, AnanasArena *a
     cstate->arena = arena;
     cstate->start_node = NewNode(cstate);
     cstate->start_node->kind = AnanasSON_NodeKind_Start;
+    cstate->cur_control_node = cstate->start_node;
 }
 
 static AnanasSON_NodeType ComputeType(AnanasSON_Node *node) {
@@ -132,8 +133,15 @@ return Peephole(cstate, node); \
     case AnanasValueType_Function:
     case AnanasValueType_Macro:
     case AnanasValueType_Bool:
-    case AnanasValueType_String:
-    case AnanasValueType_Symbol: HELIOS_TODO();
+    case AnanasValueType_String: HELIOS_TODO();
+    case AnanasValueType_Symbol: {
+        HeliosStringView sym_name = value.u.symbol;
+        AnanasSON_Node *node = NewNode(cstate);
+        node->kind = AnanasSON_NodeKind_Lookup;
+        node->type.u.sym_name = sym_name;
+        AddInput(node, cstate->cur_control_node);
+        return Peephole(cstate, node);
+    }
     case AnanasValueType_List: {
         AnanasList *list = value.u.list;
         if (list == NULL) {
@@ -160,7 +168,7 @@ return Peephole(cstate, node); \
             AnanasSON_Node *ret_value_node = AnanasSON_Compile(cstate, lambda_body->car);
             AnanasSON_Node *ret_node = NewNode(cstate);
             ret_node->kind = AnanasSON_NodeKind_Return;
-            AddInput(ret_node, cstate->start_node);
+            AddInput(ret_node, cstate->cur_control_node);
             AddInput(ret_node, ret_value_node);
             return Peephole(cstate, ret_node);
         } else if (HeliosStringViewEqualCStr(sym, "+")) {
@@ -171,6 +179,28 @@ return Peephole(cstate, node); \
             BINOP(Mul);
         } else if (HeliosStringViewEqualCStr(sym, "/")) {
             BINOP(Div);
+        } else if (HeliosStringViewEqualCStr(sym, "var")) {
+            AnanasList *args = list->cdr;
+            HELIOS_ASSERT(args != NULL);
+            HELIOS_ASSERT(args->cdr != NULL);
+
+            AnanasValue var_name_val = args->car;
+            HELIOS_ASSERT(var_name_val.type == AnanasValueType_Symbol);
+            HeliosStringView var_name = var_name_val.u.symbol;
+
+            AnanasValue var_value_val = args->cdr->car;
+            AnanasSON_Node *var_value = AnanasSON_Compile(cstate, var_value_val);
+
+            AnanasSON_Node *node = NewNode(cstate);
+            node->kind = AnanasSON_NodeKind_Define;
+            node->type.u.sym_name = var_name;
+
+            // PushDef(cstate, var_name, node);
+
+            AddInput(node, var_value);
+
+            cstate->cur_control_node = node;
+            return Peephole(cstate, node);
         } else {
             HELIOS_PANIC_FMT("cannot compile list with " HELIOS_SV_FMT " as the car", HELIOS_SV_ARG(sym));
         }
@@ -201,6 +231,16 @@ static const char *NodeName(AnanasSON_Node *node, HeliosAllocator allocator) {
 
         return (char *)buf;
     }
+    case AnanasSON_NodeKind_Lookup:
+    case AnanasSON_NodeKind_Define: {
+#define FMT "%s " HELIOS_SV_FMT
+        U32 n = snprintf(NULL, 0, FMT, prefix, HELIOS_SV_ARG(node->type.u.sym_name));
+        U8 *buf = HeliosAlloc(allocator, n + 1);
+        sprintf((char *)buf, FMT, prefix, HELIOS_SV_ARG(node->type.u.sym_name));
+        #undef FMT
+
+        return (char *)buf;
+    }
     default: return prefix;
     }
 
@@ -208,15 +248,19 @@ static const char *NodeName(AnanasSON_Node *node, HeliosAllocator allocator) {
 }
 
 static void FormatNode(AnanasSON_Node *node, HeliosString8 *s) {
+    if (node->flags & AnanasSON_NodeFlag_Visited) return;
+
     const char *color = NULL;
     const char *name = NodeName(node, s->allocator);
 
     switch (node->kind) {
+    case AnanasSON_NodeKind_Define:
     case AnanasSON_NodeKind_Return:
     case AnanasSON_NodeKind_Start: {
         color = "red";
         break;
     }
+    case AnanasSON_NodeKind_Lookup:
     case AnanasSON_NodeKind_Add:
     case AnanasSON_NodeKind_Mul:
     case AnanasSON_NodeKind_Sub:
@@ -239,6 +283,8 @@ static void FormatNode(AnanasSON_Node *node, HeliosString8 *s) {
         AnanasSON_Node *output = AnanasSON_NodeArrayAt(&node->outputs, i);
         FormatNode(output, s);
     }
+
+    node->flags |= AnanasSON_NodeFlag_Visited;
 }
 
 void AnanasSON_FormatNodeGraphInto(AnanasSON_CompilerState *cstate, HeliosString8 *s) {

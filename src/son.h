@@ -20,7 +20,9 @@ ERMIS_DECL_ARRAY(AnanasSON_Node *, AnanasSON_NodeArray)
     X(Add) \
     X(Sub) \
     X(Mul) \
-    X(Div)
+    X(Div) \
+    X(Lookup) \
+    X(Define)
 
 typedef struct {
     enum {
@@ -32,8 +34,13 @@ typedef struct {
     B32 is_constant;
     union {
         S64 const_integer;
+        HeliosStringView sym_name;
     } u;
 } AnanasSON_NodeType;
+
+enum {
+    AnanasSON_NodeFlag_Visited = 1 << 0,
+};
 
 struct AnanasSON_Node {
     AnanasSON_NodeType type;
@@ -44,6 +51,8 @@ struct AnanasSON_Node {
         #undef X
     } kind;
 
+    U32 flags;
+
     AnanasSON_NodeArray inputs;
     AnanasSON_NodeArray outputs;
 };
@@ -51,6 +60,7 @@ struct AnanasSON_Node {
 typedef struct {
     AnanasArena *arena;
     AnanasSON_Node *start_node;
+    AnanasSON_Node *cur_control_node;
 } AnanasSON_CompilerState;
 
 void AnanasSON_FormatNodeGraphInto(AnanasSON_CompilerState *, HeliosString8 *);
