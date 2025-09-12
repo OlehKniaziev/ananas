@@ -128,7 +128,7 @@ return Peephole(cstate, node); \
     } while (0)
 
     switch (value.type) {
-    case AnanasValueType_Int: return NewConstantNode(cstate, value.u.integer);
+    case AnanasValueType_Int: return Peephole(cstate, NewConstantNode(cstate, value.u.integer));
     case AnanasValueType_Function:
     case AnanasValueType_Macro:
     case AnanasValueType_Bool:
@@ -162,7 +162,7 @@ return Peephole(cstate, node); \
             ret_node->kind = AnanasSON_NodeKind_Return;
             AddInput(ret_node, cstate->start_node);
             AddInput(ret_node, ret_value_node);
-            return ret_node;
+            return Peephole(cstate, ret_node);
         } else if (HeliosStringViewEqualCStr(sym, "+")) {
             BINOP(Add);
         } else if (HeliosStringViewEqualCStr(sym, "-")) {
