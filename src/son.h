@@ -9,43 +9,40 @@ typedef struct AnanasSON_Node AnanasSON_Node;
 
 ERMIS_DECL_ARRAY(AnanasSON_Node *, AnanasSON_NodeArray)
 
-#define ANANAS_SON_ENUM_CONTROL_NODES \
+#define ANANAS_SON_ENUM_NODE_TYPES \
+    X(Integer) \
+    X(Bottom)
+
+#define ANANAS_SON_ENUM_NODE_KINDS \
     X(Start) \
-    X(Return)
-
-#define ANANAS_SON_ENUM_DATA_NODES \
-    X(Const)
-
-typedef struct {
-    enum {
-        #define X(t) AnanasSON_NodeControl_##t,
-        ANANAS_SON_ENUM_CONTROL_NODES
-        #undef X
-    } type;
-} AnanasSON_NodeControl;
+    X(Return) \
+    X(Const) \
+    X(Add) \
+    X(Sub) \
+    X(Mul) \
+    X(Div)
 
 typedef struct {
     enum {
-        #define X(t) AnanasSON_NodeData_##t,
-        ANANAS_SON_ENUM_DATA_NODES
+        #define X(t) AnanasSON_NodeType_##t,
+        ANANAS_SON_ENUM_NODE_TYPES
         #undef X
-    } type;
+    } kind;
 
+    B32 is_constant;
     union {
-        AnanasValue constant;
+        S64 const_integer;
     } u;
-} AnanasSON_NodeData;
+} AnanasSON_NodeType;
 
 struct AnanasSON_Node {
-    enum {
-        AnanasSON_NodeType_Control,
-        AnanasSON_NodeType_Data,
-    } type;
+    AnanasSON_NodeType type;
 
-    union {
-        AnanasSON_NodeControl control;
-        AnanasSON_NodeData data;
-    } u;
+    enum {
+        #define X(k) AnanasSON_NodeKind_##k,
+        ANANAS_SON_ENUM_NODE_KINDS
+        #undef X
+    } kind;
 
     AnanasSON_NodeArray inputs;
     AnanasSON_NodeArray outputs;

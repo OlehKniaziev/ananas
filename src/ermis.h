@@ -16,6 +16,8 @@
                                                                         \
     void arrname##Init(arrname *arr, HeliosAllocator allocator, UZ cap); \
     void arrname##Push(arrname *arr, T item);                           \
+    void arrname##OrderedRemove(arrname *arr, UZ idx);                  \
+    void arrname##UnorderedRemove(arrname *arr, UZ idx);                \
                                                                         \
     HELIOS_INLINE T arrname##Pop(arrname *arr) {                        \
         HELIOS_VERIFY(arr->count != 0);                                 \
@@ -52,6 +54,14 @@
         }                                                               \
                                                                         \
         arr->items[arr->count++] = item;                                \
+    }                                                                   \
+    \
+    void arrname##OrderedRemove(arrname *arr, UZ idx) { \
+        if (idx >= arr->count) HELIOS_PANIC("index out of bounds"); \
+        for (SZ i = idx; i < (SZ)arr->count - 1; ++i) { \
+             arr->items[i] = arr->items[i + 1]; \
+        } \
+        --arr->count; \
     }
 
 #define ERMIS_DECL_HASHMAP(K, V, hashmapname) typedef struct hashmapname { \
