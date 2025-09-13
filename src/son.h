@@ -10,8 +10,8 @@ typedef struct AnanasSON_Node AnanasSON_Node;
 ERMIS_DECL_ARRAY(AnanasSON_Node *, AnanasSON_NodeArray)
 
 #define ANANAS_SON_ENUM_NODE_TYPES \
-    X(Integer) \
-    X(Bottom)
+    X(Bottom) \
+    X(Integer)
 
 #define ANANAS_SON_ENUM_NODE_KINDS \
     X(Start) \
@@ -38,18 +38,22 @@ typedef struct {
     } u;
 } AnanasSON_NodeType;
 
+_Static_assert(AnanasSON_NodeType_Bottom == 0, "Bottom should be 0");
+
 enum {
     AnanasSON_NodeFlag_Visited = 1 << 0,
 };
 
+typedef enum {
+    #define X(k) AnanasSON_NodeKind_##k,
+    ANANAS_SON_ENUM_NODE_KINDS
+    #undef X
+} AnanasSON_NodeKind;
+
 struct AnanasSON_Node {
     AnanasSON_NodeType type;
 
-    enum {
-        #define X(k) AnanasSON_NodeKind_##k,
-        ANANAS_SON_ENUM_NODE_KINDS
-        #undef X
-    } kind;
+    AnanasSON_NodeKind kind;
 
     U32 flags;
 

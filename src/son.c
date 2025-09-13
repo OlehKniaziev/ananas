@@ -3,9 +3,13 @@
 
 ERMIS_IMPL_ARRAY(AnanasSON_Node *, AnanasSON_NodeArray)
 
-static AnanasSON_Node *NewNode(AnanasSON_CompilerState *cstate) {
+static AnanasSON_Node *NewNode(AnanasSON_CompilerState *cstate,
+                               AnanasSON_NodeKind kind,
+                               AnanasSON_NodeType type) {
     HeliosAllocator allocator = AnanasArenaToHeliosAllocator(cstate->arena);
     AnanasSON_Node *node = ANANAS_ARENA_STRUCT_ZERO(cstate->arena, AnanasSON_Node);
+    node->kind = kind;
+    node->type = type;
     AnanasSON_NodeArrayInit(&node->inputs, allocator, 5);
     AnanasSON_NodeArrayInit(&node->outputs, allocator, 5);
     return node;
@@ -18,20 +22,21 @@ static void AddInput(AnanasSON_Node *node, AnanasSON_Node *input) {
 
 static AnanasSON_Node *NewConstantNode(AnanasSON_CompilerState *cstate,
                                        S64 value) {
-    AnanasSON_Node *node = NewNode(cstate);
-    node->kind = AnanasSON_NodeKind_Const;
-    node->type.kind = AnanasSON_NodeType_Integer;
-    node->type.is_constant = 1;
-    node->type.u.const_integer = value;
+    AnanasSON_NodeType node_type = {0};
+    node_type.kind = AnanasSON_NodeType_Integer;
+    node_type.is_constant = 1;
+    node_type.u.const_integer = value;
+    AnanasSON_Node *node = NewNode(cstate, AnanasSON_NodeKind_Const, node_type);
 
     AddInput(node, cstate->start_node);
     return node;
 }
 
+#define TYPE_BOTTOM ((AnanasSON_NodeType) {0})
+
 void AnanasSON_CompilerStateInit(AnanasSON_CompilerState *cstate, AnanasArena *arena) {
     cstate->arena = arena;
-    cstate->start_node = NewNode(cstate);
-    cstate->start_node->kind = AnanasSON_NodeKind_Start;
+    cstate->start_node = NewNode(cstate, AnanasSON_NodeKind_Start, TYPE_BOTTOM);
     cstate->cur_control_node = cstate->start_node;
 }
 
@@ -119,9 +124,7 @@ AnanasValue rhs = args->cdr->car; \
 AnanasSON_Node *lhs_node = AnanasSON_Compile(cstate, lhs); \
 AnanasSON_Node *rhs_node = AnanasSON_Compile(cstate, rhs); \
 \
-AnanasSON_Node *node = NewNode(cstate); \
-node->kind = AnanasSON_NodeKind_##k; \
-node->type.kind = AnanasSON_NodeType_Bottom; \
+AnanasSON_Node *node = NewNode(cstate, AnanasSON_NodeKind_##k, TYPE_BOTTOM); \
 \
 AddInput(node, lhs_node); \
 AddInput(node, rhs_node); \
@@ -136,9 +139,9 @@ return Peephole(cstate, node); \
     case AnanasValueType_String: HELIOS_TODO();
     case AnanasValueType_Symbol: {
         HeliosStringView sym_name = value.u.symbol;
-        AnanasSON_Node *node = NewNode(cstate);
-        node->kind = AnanasSON_NodeKind_Lookup;
-        node->type.u.sym_name = sym_name;
+        AnanasSON_NodeType node_type = {0};
+        node_type.u.sym_name = sym_name;
+        AnanasSON_Node *node = NewNode(cstate, AnanasSON_NodeKind_Lookup, node_type);
         AddInput(node, cstate->cur_control_node);
         return Peephole(cstate, node);
     }
@@ -166,8 +169,7 @@ return Peephole(cstate, node); \
             }
 
             AnanasSON_Node *ret_value_node = AnanasSON_Compile(cstate, lambda_body->car);
-            AnanasSON_Node *ret_node = NewNode(cstate);
-            ret_node->kind = AnanasSON_NodeKind_Return;
+            AnanasSON_Node *ret_node = NewNode(cstate, AnanasSON_NodeKind_Return, TYPE_BOTTOM);
             AddInput(ret_node, cstate->cur_control_node);
             AddInput(ret_node, ret_value_node);
             return Peephole(cstate, ret_node);
@@ -191,9 +193,9 @@ return Peephole(cstate, node); \
             AnanasValue var_value_val = args->cdr->car;
             AnanasSON_Node *var_value = AnanasSON_Compile(cstate, var_value_val);
 
-            AnanasSON_Node *node = NewNode(cstate);
-            node->kind = AnanasSON_NodeKind_Define;
-            node->type.u.sym_name = var_name;
+            AnanasSON_NodeType node_type = {0};
+            node_type.u.sym_name = var_name;
+            AnanasSON_Node *node = NewNode(cstate, AnanasSON_NodeKind_Define, node_type);
 
             // PushDef(cstate, var_name, node);
 
