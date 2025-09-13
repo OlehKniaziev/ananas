@@ -61,10 +61,18 @@ struct AnanasSON_Node {
     AnanasSON_NodeArray outputs;
 };
 
+ERMIS_DECL_HASHMAP(HeliosStringView, AnanasSON_Node *, AnanasSON_ScopeMap)
+
+typedef struct AnanasSON_Scope {
+    struct AnanasSON_Scope *parent;
+    AnanasSON_ScopeMap map;
+} AnanasSON_Scope;
+
 typedef struct {
     AnanasArena *arena;
     AnanasSON_Node *start_node;
     AnanasSON_Node *cur_control_node;
+    AnanasSON_Scope *cur_scope;
 } AnanasSON_CompilerState;
 
 void AnanasSON_FormatNodeGraphInto(AnanasSON_CompilerState *, HeliosString8 *);

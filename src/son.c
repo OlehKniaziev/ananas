@@ -78,7 +78,50 @@ static AnanasSON_NodeType ComputeType(AnanasSON_Node *node) {
     }
 }
 
+static const char *node_kinds_strings[] = {
+#define X(t) [AnanasSON_NodeKind_##t] = #t,
+    ANANAS_SON_ENUM_NODE_KINDS
+    #undef X
+};
+
+static const char *NodeName(AnanasSON_Node *node, HeliosAllocator allocator) {
+    const char *prefix = node_kinds_strings[node->kind];
+
+    switch (node->kind) {
+    case AnanasSON_NodeKind_Const: {
+#define FMT "%s %ld"
+        U32 n = snprintf(NULL, 0, FMT, prefix, node->type.u.const_integer);
+        U8 *buf = HeliosAlloc(allocator, n + 1);
+        sprintf((char *)buf, FMT, prefix, node->type.u.const_integer);
+        #undef FMT
+
+        return (char *)buf;
+    }
+    case AnanasSON_NodeKind_Lookup:
+    case AnanasSON_NodeKind_Define: {
+#define FMT "%s " HELIOS_SV_FMT
+        U32 n = snprintf(NULL, 0, FMT, prefix, HELIOS_SV_ARG(node->type.u.sym_name));
+        U8 *buf = HeliosAlloc(allocator, n + 1);
+        sprintf((char *)buf, FMT, prefix, HELIOS_SV_ARG(node->type.u.sym_name));
+        #undef FMT
+
+        return (char *)buf;
+    }
+    default: return prefix;
+    }
+
+    HELIOS_UNREACHABLE();
+}
+
+static B32 IsControlNode(AnanasSON_Node *node) {
+    return node->kind == AnanasSON_NodeKind_Start ||
+    node->kind == AnanasSON_NodeKind_Return ||
+    node->kind == AnanasSON_NodeKind_Define;
+}
+
 static void Kill(AnanasSON_Node *node) {
+    if (IsControlNode(node)) return;
+
     HELIOS_ASSERT(node->outputs.count == 0);
 
     for (UZ i = 0; i < node->inputs.count; ++i) {
@@ -98,6 +141,18 @@ static void Kill(AnanasSON_Node *node) {
     }
 }
 
+ERMIS_IMPL_HASHMAP(HeliosStringView, AnanasSON_Node *, AnanasSON_ScopeMap, HeliosStringViewEqual, AnanasFnv1Hash)
+
+static AnanasSON_Node *LookupSymbol(AnanasSON_CompilerState *cstate, HeliosStringView sym) {
+    AnanasSON_Scope *scope = cstate->cur_scope;
+    while (scope != NULL) {
+        AnanasSON_Node *node;
+        if (AnanasSON_ScopeMapFind(&scope->map, sym, &node)) return node;
+        scope = scope->parent;
+    }
+    return NULL;
+}
+
 static AnanasSON_Node *Peephole(AnanasSON_CompilerState *cstate, AnanasSON_Node *node) {
     AnanasSON_NodeType type = ComputeType(node);
     node->type = type;
@@ -109,7 +164,28 @@ static AnanasSON_Node *Peephole(AnanasSON_CompilerState *cstate, AnanasSON_Node 
         return Peephole(cstate, cnode);
     }
 
+    if (node->kind == AnanasSON_NodeKind_Lookup) {
+        AnanasSON_Node *sym_node = LookupSymbol(cstate, node->type.u.sym_name);
+        if (sym_node != NULL) {
+            Kill(node);
+            return AnanasSON_NodeArrayAt(&sym_node->inputs, 0);
+        }
+    }
+
     return node;
+}
+
+static void PushScope(AnanasSON_CompilerState *cstate) {
+    AnanasSON_Scope *scope = ANANAS_ARENA_STRUCT_ZERO(cstate->arena, AnanasSON_Scope);
+    HeliosAllocator allocator = AnanasArenaToHeliosAllocator(cstate->arena);
+    AnanasSON_ScopeMapInit(&scope->map, allocator, 37);
+    scope->parent = cstate->cur_scope;
+    cstate->cur_scope = scope;
+}
+
+static void PopScope(AnanasSON_CompilerState *cstate) {
+    HELIOS_ASSERT(cstate->cur_scope != NULL);
+    cstate->cur_scope = cstate->cur_scope->parent;
 }
 
 AnanasSON_Node *AnanasSON_Compile(AnanasSON_CompilerState *cstate, AnanasValue value) {
@@ -163,6 +239,8 @@ return Peephole(cstate, node); \
 
             HELIOS_ASSERT(lambda_body != NULL);
 
+            PushScope(cstate);
+
             while (lambda_body->cdr != NULL) {
                 AnanasSON_Compile(cstate, lambda_body->car);
                 lambda_body = lambda_body->cdr;
@@ -172,6 +250,9 @@ return Peephole(cstate, node); \
             AnanasSON_Node *ret_node = NewNode(cstate, AnanasSON_NodeKind_Return, TYPE_BOTTOM);
             AddInput(ret_node, cstate->cur_control_node);
             AddInput(ret_node, ret_value_node);
+
+            PopScope(cstate);
+
             return Peephole(cstate, ret_node);
         } else if (HeliosStringViewEqualCStr(sym, "+")) {
             BINOP(Add);
@@ -197,7 +278,9 @@ return Peephole(cstate, node); \
             node_type.u.sym_name = var_name;
             AnanasSON_Node *node = NewNode(cstate, AnanasSON_NodeKind_Define, node_type);
 
-            // PushDef(cstate, var_name, node);
+            if (!AnanasSON_ScopeMapInsert(&cstate->cur_scope->map, var_name, node)) {
+                HELIOS_PANIC_FMT("duplicate var " HELIOS_SV_FMT, HELIOS_SV_ARG(var_name));
+            }
 
             AddInput(node, var_value);
 
@@ -210,41 +293,6 @@ return Peephole(cstate, node); \
     }
 
     #undef BINOP
-
-    HELIOS_UNREACHABLE();
-}
-
-static const char *node_kinds_strings[] = {
-#define X(t) [AnanasSON_NodeKind_##t] = #t,
-    ANANAS_SON_ENUM_NODE_KINDS
-    #undef X
-};
-
-static const char *NodeName(AnanasSON_Node *node, HeliosAllocator allocator) {
-    const char *prefix = node_kinds_strings[node->kind];
-
-    switch (node->kind) {
-    case AnanasSON_NodeKind_Const: {
-#define FMT "%s %ld"
-        U32 n = snprintf(NULL, 0, FMT, prefix, node->type.u.const_integer);
-        U8 *buf = HeliosAlloc(allocator, n + 1);
-        sprintf((char *)buf, FMT, prefix, node->type.u.const_integer);
-        #undef FMT
-
-        return (char *)buf;
-    }
-    case AnanasSON_NodeKind_Lookup:
-    case AnanasSON_NodeKind_Define: {
-#define FMT "%s " HELIOS_SV_FMT
-        U32 n = snprintf(NULL, 0, FMT, prefix, HELIOS_SV_ARG(node->type.u.sym_name));
-        U8 *buf = HeliosAlloc(allocator, n + 1);
-        sprintf((char *)buf, FMT, prefix, HELIOS_SV_ARG(node->type.u.sym_name));
-        #undef FMT
-
-        return (char *)buf;
-    }
-    default: return prefix;
-    }
 
     HELIOS_UNREACHABLE();
 }
