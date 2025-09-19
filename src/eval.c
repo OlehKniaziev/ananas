@@ -91,9 +91,6 @@ static B32 AnanasEvalFormList(AnanasList *form_list,
     return 1;
 }
 
-ERMIS_DECL_ARRAY(AnanasValue, AnanasArgsArray)
-ERMIS_IMPL_ARRAY(AnanasValue, AnanasArgsArray)
-
 static B32 AnanasEvalFunctionWithArgumentList(AnanasFunction *function,
                                               AnanasList *args_list,
                                               AnanasToken where,
@@ -104,14 +101,14 @@ static B32 AnanasEvalFunctionWithArgumentList(AnanasFunction *function,
     HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
 
     if (function->is_native) {
-        AnanasArgsArray args_array;
-        AnanasArgsArrayInit(&args_array, arena_allocator, 10);
+        AnanasValueArray args_array;
+        AnanasValueArrayInit(&args_array, arena_allocator, 10);
 
         while (args_list != NULL) {
             AnanasValue arg_value;
             if (!AnanasEval(args_list->car, arena, env, &arg_value, error_ctx)) return 0;
 
-            AnanasArgsArrayPush(&args_array, arg_value);
+            AnanasValueArrayPush(&args_array, arg_value);
 
             args_list = args_list->cdr;
         }
@@ -238,12 +235,12 @@ B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
     if (macro->is_native) {
         AnanasNativeMacro native_macro = macro->u.native;
 
-        AnanasArgsArray args_array;
-        AnanasArgsArrayInit(&args_array, arena_allocator, 10);
+        AnanasValueArray args_array;
+        AnanasValueArrayInit(&args_array, arena_allocator, 10);
 
         while (args_list != NULL) {
             AnanasValue arg = args_list->car;
-            AnanasArgsArrayPush(&args_array, arg);
+            AnanasValueArrayPush(&args_array, arg);
             args_list = args_list->cdr;
         }
 
@@ -324,72 +321,6 @@ B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
                               &call_env,
                               error_ctx,
                               result);
-}
-
-ERMIS_DECL_ARRAY(HeliosStringView, AnanasParamsArray)
-ERMIS_IMPL_ARRAY(HeliosStringView, AnanasParamsArray)
-
-static B32 AnanasParseParamsFromList(AnanasArena *arena,
-                                     AnanasList *params_list,
-                                     AnanasParams *out_params,
-                                     AnanasErrorContext *error_ctx) {
-    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
-
-    AnanasParamsArray params_array;
-    AnanasParamsArrayInit(&params_array, arena_allocator, 16);
-
-    out_params->variable = 0;
-
-    while (params_list != NULL) {
-        AnanasValue param_node = params_list->car;
-        if (param_node.type != AnanasValueType_Symbol) {
-            AnanasErrorContextMessage(error_ctx, param_node.token.row, param_node.token.col, "expected a symbol as a parameter name");
-            return 0;
-        }
-
-        HeliosStringView param = param_node.u.symbol;
-
-        if (HeliosStringViewEqualCStr(param, ".")) {
-            if (params_list->cdr == NULL) {
-                AnanasErrorContextMessage(error_ctx,
-                                          param_node.token.row,
-                                          param_node.token.col,
-                                          "expected a param name after '.'");
-                return 0;
-            }
-
-            if (params_list->cdr->cdr != NULL) {
-                AnanasErrorContextMessage(error_ctx,
-                                          param_node.token.row,
-                                          param_node.token.col,
-                                          "expected only one parameter name after '.'");
-                return 0;
-            }
-
-            param_node = params_list->cdr->car;
-            if (param_node.type != AnanasValueType_Symbol) {
-                AnanasErrorContextMessage(error_ctx,
-                                          param_node.token.row,
-                                          param_node.token.col,
-                                          "expected a symbol as a parameter name");
-                return 0;
-            }
-
-            param = param_node.u.symbol;
-            AnanasParamsArrayPush(&params_array, param);
-            out_params->variable = 1;
-            break;
-        }
-
-        AnanasParamsArrayPush(&params_array, param);
-
-        params_list = params_list->cdr;
-    }
-
-    out_params->names = params_array.items;
-    out_params->count = params_array.count;
-
-    return 1;
 }
 
 static const char *AnanasTypeName(AnanasValueType type) {
@@ -869,80 +800,6 @@ ANANAS_DECLARE_NATIVE_FUNCTION(AnanasError) {
     ANANAS_NATIVE_BAIL_FMT(HELIOS_SV_FMT, HELIOS_SV_ARG(msg));
 }
 
-static B32 AnanasUnquoteForm(AnanasList *args,
-                             AnanasArena *arena,
-                             AnanasEnv *env,
-                             AnanasErrorContext *error_ctx) {
-    while (args != NULL) {
-        AnanasValue arg = args->car;
-        AnanasList *current_args = args;
-        args = args->cdr;
-
-        if (arg.type != AnanasValueType_List) continue;
-
-        AnanasList *arg_list = arg.u.list;
-        if (arg_list == NULL) continue;
-        if (!AnanasUnquoteForm(arg_list, arena, env, error_ctx)) return 0;
-
-        AnanasValue car = arg_list->car;
-        if (car.type != AnanasValueType_Symbol) continue;
-
-        HeliosStringView car_symbol = car.u.symbol;
-        if (HeliosStringViewEqualCStr(car_symbol, "unquote")) {
-            AnanasList *unquote_args = arg_list->cdr;
-            if (unquote_args == NULL) {
-                AnanasErrorContextMessage(error_ctx, car.token.row, car.token.col, "no argument passed to 'unquote' form");
-                return 0;
-            }
-
-            if (unquote_args->cdr != NULL) {
-                AnanasErrorContextMessage(error_ctx, car.token.row, car.token.col, "'unquote' expects exactly 1 argument");
-                return 0;
-            }
-
-            AnanasValue unquote_arg = unquote_args->car;
-            if (unquote_arg.type == AnanasValueType_List) {
-                unquote_arg.u.list = AnanasListCopy(arena, unquote_arg.u.list);
-            }
-            if (!AnanasEval(unquote_arg, arena, env, &current_args->car, error_ctx)) return 0;
-        } else if (HeliosStringViewEqualCStr(car_symbol, "unquote-splice")) {
-            AnanasList *unquote_args = arg_list->cdr;
-            if (unquote_args == NULL) {
-                AnanasErrorContextMessage(error_ctx, car.token.row, car.token.col, "no argument passed to 'unquote-splice' form");
-                return 0;
-            }
-
-            if (unquote_args->cdr != NULL) {
-                AnanasErrorContextMessage(error_ctx, car.token.row, car.token.col, "'unquote-splice' expects exactly 1 argument");
-                return 0;
-            }
-
-            AnanasValue unquote_arg = unquote_args->car;
-            AnanasValue unquoted_form;
-            if (!AnanasEval(unquote_arg, arena, env, &unquoted_form, error_ctx)) return 0;
-
-            if (unquoted_form.type != AnanasValueType_List || unquoted_form.u.list == NULL) {
-                current_args->car = unquoted_form;
-            } else {
-                AnanasList *unquoted_list = AnanasListCopy(arena, unquoted_form.u.list);
-                if (unquoted_list != NULL) {
-                    AnanasList *current_unquoted_list = unquoted_list;
-                    while (current_unquoted_list->cdr != NULL) {
-                        current_unquoted_list = current_unquoted_list->cdr;
-                    }
-
-                    current_unquoted_list->cdr = args;
-
-                    current_args->car = unquoted_list->car;
-                    current_args->cdr = unquoted_list->cdr;
-                }
-            }
-        }
-    }
-
-    return 1;
-}
-
 B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue *result, AnanasErrorContext *error_ctx) {
     switch (node.type) {
     case AnanasValueType_Macro:
@@ -999,6 +856,8 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
                                                       error_ctx,
                                                       result);
         }
+
+        HeliosAllocator allocator = AnanasArenaToHeliosAllocator(arena);
 
         HeliosStringView sym_name = list->car.u.symbol;
         if (HeliosStringViewEqualCStr(sym_name, "var")) {
@@ -1126,7 +985,7 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
             }
 
             AnanasParams lambda_params;
-            if (!AnanasParseParamsFromList(arena, lambda_params_list, &lambda_params, error_ctx)) return 0;
+            if (!AnanasParseParamsFromList(allocator, lambda_params_list, &lambda_params, error_ctx)) return 0;
 
             AnanasUserFunction lambda = {
                 .params = lambda_params,
@@ -1351,7 +1210,7 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
 
             AnanasList *macro_params_list = macro_args_node.u.list;
             AnanasParams macro_params;
-            if (!AnanasParseParamsFromList(arena, macro_params_list, &macro_params, error_ctx)) return 0;
+            if (!AnanasParseParamsFromList(allocator, macro_params_list, &macro_params, error_ctx)) return 0;
 
             AnanasList *macro_body = args_list->cdr;
 

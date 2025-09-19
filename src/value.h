@@ -80,6 +80,16 @@ typedef struct {
     UZ count;
 } AnanasParams;
 
+B32 AnanasParseParamsFromList(HeliosAllocator,
+                              AnanasList *,
+                              AnanasParams *,
+                              AnanasErrorContext *);
+
+B32 AnanasUnquoteForm(AnanasList *,
+                      AnanasArena *,
+                      struct AnanasEnv *,
+                      AnanasErrorContext *);
+
 typedef struct {
     AnanasValue *values;
     UZ count;
@@ -89,6 +99,8 @@ static inline AnanasValue AnanasArgAt(AnanasArgs args, UZ idx) {
     HELIOS_VERIFY(args.count > idx);
     return args.values[idx];
 }
+
+ERMIS_DECL_ARRAY(AnanasValue, AnanasValueArray)
 
 #define ANANAS_DECLARE_NATIVE_FUNCTION(name) B32 name(AnanasArgs args, \
     AnanasToken where, \
