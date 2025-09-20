@@ -5,6 +5,7 @@
 #include "common.h"
 #include "son.h"
 #include "lir.h"
+#include "vm.h"
 
 static void AnanasEvalFile(AnanasArena *arena, HeliosStringView file_path) {
     HeliosAllocator allocator = AnanasArenaToHeliosAllocator(arena);
@@ -93,10 +94,7 @@ void AnanasSON_CompileFile(AnanasArena *arena, HeliosStringView file_path) {
     exit(0);
 }
 
-static void AnanasLIR_DumpBytecode(AnanasLIR_Bytecode bytecode) {
-    U8 *bcode = bytecode.bytes;
-    UZ bcount = bytecode.count;
-
+static void AnanasLIR_DumpBytecode(U8 *bcode, UZ bcount) {
     HELIOS_ASSERT(bcode != NULL);
 
     UZ b = bcount;
@@ -135,8 +133,8 @@ static void AnanasLIR_DumpBytecode(AnanasLIR_Bytecode bytecode) {
             i += sizeof(*lop);
             break;
         }
-        case AnanasLIR_Op_Insert: {
-            AnanasLIR_OpInsert *iop = (AnanasLIR_OpInsert *)op;
+        case AnanasLIR_Op_Update: {
+            AnanasLIR_OpUpdate *iop = (AnanasLIR_OpUpdate *)op;
             printf(HELIOS_SV_FMT, HELIOS_SV_ARG(iop->name));
             i += sizeof(*iop);
             break;
@@ -165,9 +163,14 @@ static void AnanasLIR_DumpBytecode(AnanasLIR_Bytecode bytecode) {
             i += sizeof(*lop);
             break;
         }
+        case AnanasLIR_Op_Call: {
+            AnanasLIR_OpCall *cop = (AnanasLIR_OpCall *)op;
+            printf("%u", cop->args_count);
+            i += sizeof(*cop);
+            break;
+        }
         case AnanasLIR_Op_PushScope:
         case AnanasLIR_Op_PopScope:
-        case AnanasLIR_Op_Call:
         case AnanasLIR_Op_Return:
         case AnanasLIR_Op_Rem:
         case AnanasLIR_Op_Sub:
@@ -182,7 +185,9 @@ static void AnanasLIR_DumpBytecode(AnanasLIR_Bytecode bytecode) {
     }
 }
 
-static void AnanasLIR_CompileFile(AnanasArena *arena, HeliosStringView file_path) {
+static void AnanasLIR_CompileFile(AnanasArena *arena,
+                                  HeliosStringView file_path,
+                                  AnanasLIR_CompiledModule *module) {
     HeliosAllocator allocator = AnanasArenaToHeliosAllocator(arena);
 
     HeliosStringView file_contents = HeliosReadEntireFile(allocator, file_path);
@@ -219,18 +224,8 @@ static void AnanasLIR_CompileFile(AnanasArena *arena, HeliosStringView file_path
     AnanasLIR_CompilerContext ctx = {0};
     AnanasLIR_CompilerContextInit(&ctx, allocator, arena);
 
-    B32 ok = AnanasLIR_CompileProgram(&ctx, program);
+    B32 ok = AnanasLIR_CompileProgram(&ctx, program, module);
     HELIOS_ASSERT(ok);
-
-    AnanasLIR_DumpBytecode(ctx.bytecode);
-
-    for (UZ i = 0; i < ctx.lambdas_count; ++i) {
-        AnanasLIR_CompiledLambda lam = ctx.lambdas[i];
-        printf("Lambda %zu:\n", i);
-        AnanasLIR_DumpBytecode(lam.bytecode);
-    }
-
-    exit(0);
 }
 
 int main(int argc, char **argv) {
@@ -249,7 +244,39 @@ int main(int argc, char **argv) {
             AnanasEvalFile(&arena, file_path);
         } else if (strcmp(subcommand, "com") == 0) {
             HeliosStringView file_path = HELIOS_SV_LIT(argv[2]);
-            AnanasLIR_CompileFile(&arena, file_path);
+            AnanasLIR_CompiledModule module = {0};
+            AnanasLIR_CompileFile(&arena, file_path, &module);
+
+            AnanasLIR_DumpBytecode(module.bytecode, module.bytecode_count);
+
+            for (UZ i = 0; i < module.lambdas_count; ++i) {
+                AnanasLIR_CompiledLambda lam = module.lambdas[i];
+                printf("Lambda %zu:\n", i);
+                AnanasLIR_DumpBytecode(lam.bytecode, lam.bytecode_count);
+            }
+
+            exit(0);
+        } else if (strcmp(subcommand, "brun") == 0) {
+            HeliosStringView file_path = HELIOS_SV_LIT(argv[2]);
+            AnanasLIR_CompiledModule module = {0};
+            AnanasLIR_CompileFile(&arena, file_path, &module);
+
+            AnanasLIR_DumpBytecode(module.bytecode, module.bytecode_count);
+
+            for (UZ i = 0; i < module.lambdas_count; ++i) {
+                AnanasLIR_CompiledLambda lam = module.lambdas[i];
+                printf("Lambda %zu:\n", i);
+                AnanasLIR_DumpBytecode(lam.bytecode, lam.bytecode_count);
+            }
+
+            HeliosAllocator allocator = HeliosNewMallocAllocator();
+
+            AnanasVM vm = {0};
+            AnanasVM_Init(&vm, allocator);
+
+            HELIOS_VERIFY(AnanasVM_ExecModule(&vm, module));
+
+            exit(0);
         } else {
             fprintf(stderr, "unknown subcommand %s", subcommand);
             return 1;

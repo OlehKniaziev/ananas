@@ -12,7 +12,7 @@
     X(Rem) \
     X(Define) \
     X(Lookup) \
-    X(Insert) \
+    X(Update) \
     X(Call) \
     X(Return) \
     X(PushScope) \
@@ -45,7 +45,7 @@ typedef struct {
 typedef struct {
     AnanasLIR_Op op;
     HeliosStringView name;
-} AnanasLIR_OpInsert;
+} AnanasLIR_OpUpdate;
 
 typedef struct {
     AnanasLIR_Op op;
@@ -63,13 +63,19 @@ typedef struct {
 } AnanasLIR_OpLoadLambda;
 
 typedef struct {
+    AnanasLIR_Op op;
+    U32 args_count;
+} AnanasLIR_OpCall;
+
+typedef struct {
     U8 *bytes;
     UZ count;
     UZ capacity;
 } AnanasLIR_Bytecode;
 
 typedef struct {
-    AnanasLIR_Bytecode bytecode;
+    U8 *bytecode;
+    UZ bytecode_count;
     AnanasParams params;
 } AnanasLIR_CompiledLambda;
 
@@ -102,6 +108,16 @@ static inline void AnanasLIR_CompilerContextInit(AnanasLIR_CompilerContext *ctx,
     ctx->temp = temp;
 }
 
-B32 AnanasLIR_CompileProgram(AnanasLIR_CompilerContext *ctx, AnanasValueArray prog);
+typedef struct {
+    U8 *bytecode;
+    UZ bytecode_count;
+
+    AnanasLIR_CompiledLambda *lambdas;
+    UZ lambdas_count;
+} AnanasLIR_CompiledModule;
+
+B32 AnanasLIR_CompileProgram(AnanasLIR_CompilerContext *ctx,
+                             AnanasValueArray prog,
+                             AnanasLIR_CompiledModule *module);
 
 #endif // ANANAS_LIR_H_

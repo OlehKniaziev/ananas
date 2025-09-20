@@ -111,8 +111,8 @@ static B32 CompileValue(AnanasLIR_CompilerContext *ctx, AnanasValue value) {
             AnanasValue var_value = args->cdr->car;
             if (!CompileValue(ctx, var_value)) return 0;
 
-            AnanasLIR_OpInsert iop = {0};
-            iop.op = AnanasLIR_Op_Insert;
+            AnanasLIR_OpUpdate iop = {0};
+            iop.op = AnanasLIR_Op_Update;
             iop.name = var_name;
             APPEND_OP(iop);
 
@@ -218,6 +218,14 @@ static B32 CompileValue(AnanasLIR_CompilerContext *ctx, AnanasValue value) {
             AnanasLIR_CompiledLambda lambda = {0};
             HELIOS_ASSERT(AnanasParseParamsFromList(ctx->arena, params_list, &lambda.params, NULL));
 
+            for (SZ i = (SZ)lambda.params.count - 1; i >= 0; --i) {
+                HeliosStringView param_name = lambda.params.names[i];
+                AnanasLIR_OpDefine dop = {0};
+                dop.op = AnanasLIR_Op_Define;
+                dop.name = param_name;
+                APPEND_OP(dop);
+            }
+
             AnanasList *body = args->cdr;
             while (body != NULL) {
                 if (!CompileValue(ctx, body->car)) return 0;
@@ -226,7 +234,8 @@ static B32 CompileValue(AnanasLIR_CompilerContext *ctx, AnanasValue value) {
 
             APPEND_SIMPLE(Return);
 
-            lambda.bytecode = ctx->bytecode;
+            lambda.bytecode = ctx->bytecode.bytes;
+            lambda.bytecode_count = ctx->bytecode.count;
             ctx->bytecode = cur_bytecode;
 
             AnanasLIR_OpLoadLambda lop = {0};
@@ -238,8 +247,11 @@ static B32 CompileValue(AnanasLIR_CompilerContext *ctx, AnanasValue value) {
 
             return 1;
         } else {
+            U32 nargs = 0;
+
             while (args != NULL) {
                 if (!CompileValue(ctx, args->car)) return 0;
+                ++nargs;
                 args = args->cdr;
             }
 
@@ -248,7 +260,10 @@ static B32 CompileValue(AnanasLIR_CompilerContext *ctx, AnanasValue value) {
             lop.name = sym_name;
             APPEND_OP(lop);
 
-            APPEND_SIMPLE(Call);
+            AnanasLIR_OpCall cop = {0};
+            cop.op = AnanasLIR_Op_Call;
+            cop.args_count = nargs;
+            APPEND_OP(cop);
             return 1;
         }
     }
@@ -259,11 +274,16 @@ static B32 CompileValue(AnanasLIR_CompilerContext *ctx, AnanasValue value) {
     HELIOS_UNREACHABLE();
 }
 
-B32 AnanasLIR_CompileProgram(AnanasLIR_CompilerContext *ctx, AnanasValueArray prog) {
+B32 AnanasLIR_CompileProgram(AnanasLIR_CompilerContext *ctx, AnanasValueArray prog, AnanasLIR_CompiledModule *module) {
     for (UZ i = 0; i < prog.count; ++i) {
         AnanasValue value = AnanasValueArrayAt(&prog, i);
         if (!CompileValue(ctx, value)) return 0;
     }
+
+    module->bytecode = ctx->bytecode.bytes;
+    module->bytecode_count = ctx->bytecode.count;
+    module->lambdas = ctx->lambdas;
+    module->lambdas_count = ctx->lambdas_count;
 
     return 1;
 }

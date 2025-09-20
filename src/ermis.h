@@ -76,6 +76,7 @@
     void hashmapname##Init(hashmapname *map, HeliosAllocator allocator, UZ cap); \
     B32 hashmapname##Insert(hashmapname *map, K key, V value);          \
     V *hashmapname##FindPtr(hashmapname *map, K key);                   \
+    void hashmapname##Clear(hashmapname *map);                          \
                                                                         \
     HELIOS_INLINE B32 hashmapname##Find(hashmapname *map, K key, V *value) { \
         V *found_ptr = hashmapname##FindPtr(map, key);                  \
@@ -169,6 +170,11 @@
         } while (idx != start_idx);                                     \
                                                                         \
         return NULL;                                                    \
+    } \
+    \
+    void hashmapname##Clear(hashmapname *map) {                         \
+        memset(map->meta, 0, sizeof(*map->meta) * map->capacity); \
+        map->count = 0; \
     }
 
 // Equality and hash functions
