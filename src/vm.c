@@ -112,6 +112,11 @@ static AnanasVM_Env *AllocEnv(AnanasVM *vm) {
 }
 
 static void ReturnEnv(AnanasVM *vm, AnanasVM_Env *env) {
+    ERMIS_HASHMAP_FOREACH(&env->map, key, value, {
+        (void) key;
+        Release(vm, value);
+    })
+
     env->parent = vm->env_pool;
     vm->env_pool = env;
 }
