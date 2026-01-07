@@ -3,7 +3,7 @@
 set -xe
 
 commonflags="-Wall -Wextra -Werror -g"
-sources="./src/main.c ./src/lexer.c ./src/read.c ./src/astron.c ./src/common.c ./src/eval.c ./src/print.c ./src/son.c ./src/lir.c ./src/value.c ./src/vm.c ./src/gc.c"
+sources="./src/main.c ./src/lexer.c ./src/read.c ./src/astron.c ./src/common.c ./src/eval.c ./src/print.c ./src/son.c ./src/lir.c ./src/value.c ./src/vm.c ./src/gc.c ./src/platform_linux_glibc.c"
 
 if [ "$1" = "release" ]; then
     clang -o ananas $commonflags -O2 $sources

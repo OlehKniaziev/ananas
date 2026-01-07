@@ -1,15 +1,6 @@
 #ifndef ASTRON_HELIOS_H
 #define ASTRON_HELIOS_H
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <limits.h>
-#include <malloc.h>
-#include <string.h>
-#include <ctype.h>
-#include <stdarg.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -63,11 +54,12 @@ extern "C" {
 
 #define HELIOS_PAGE_SIZE (1024 * 4)
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(_WIN64)
 #    define HELIOS_PLATFORM_WINDOWS
 #    define HELIOS_PAGE_ALIGNMENT (1024 * 64)
 
 #    define WIN32_LEAN_AND_MEAN
+#    define _CRT_SECURE_NO_WARNINGS
 #    include <windows.h>
 #else
 #    define HELIOS_PLATFORM_POSIX
@@ -101,18 +93,36 @@ extern "C" {
 #define HELIOS_DEF extern
 #endif // HELIOS_STATIC
 
-#if SIZE_MAX == UINT32_MAX
-#    define HELIOS_BITS_32
-#elif SIZE_MAX == UINT64_MAX
-#    define HELIOS_BITS_64
+#ifdef HELIOS_PLATFORM_WINDOWS
+#    ifdef _WIN64
+#        define HELIOS_BITS_64
+#    else
+#        define HELIOS_BITS_32
+#    endif // _WIN64
 #else
-#    error "Could not determine architecture bit size"
-#endif // word size check
+#    if SIZE_MAX == UINT32_MAX
+#        define HELIOS_BITS_32
+#    elif SIZE_MAX == UINT64_MAX
+#        define HELIOS_BITS_64
+#    else
+#        error "Could not determine architecture bit size"
+#    endif // word size check
+#endif // HELIOS_PLATFORM_WINDOWS
+
 
 // TODO(oleh): This should store evaluated x and y in separate variables if typeof and expression block
 // extensions are available.
 #define HELIOS_MAX(x, y) ((x) > (y) ? (x) : (y))
 #define HELIOS_MIN(x, y) ((x) < (y) ? (x) : (y))
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <limits.h>
+#include <malloc.h>
+#include <string.h>
+#include <ctype.h>
+#include <stdarg.h>
 
 typedef uint8_t  U8;
 typedef uint16_t U16;
@@ -622,11 +632,12 @@ HELIOS_DEF void HeliosString8StreamRetreat(HeliosString8Stream *s) {
     s->last_char_size = -1;
 }
 
+#if HELIOS_PLATFORM_POSIX
 HELIOS_DEF HeliosStringView HeliosReadEntireFile(HeliosAllocator allocator, HeliosStringView path) {
     HeliosAllocator temp = HeliosGetTempAllocator();
     char *path_cstr = HeliosStringViewCloneToCStr(temp, path);
 
-    ssize_t fd = open(path_cstr, O_RDONLY);
+    SZ fd = open(path_cstr, O_RDONLY);
     if (fd == -1) {
         return (HeliosStringView) {.data = NULL, .count = 0};
     }
@@ -652,6 +663,50 @@ HELIOS_DEF HeliosStringView HeliosReadEntireFile(HeliosAllocator allocator, Heli
 
     return (HeliosStringView) {.data = file_buf, .count = file_size};
 }
+#endif // HELIOS_PLATFORM_POSIX
+
+#ifdef HELIOS_PLATFORM_WINDOWS
+HELIOS_DEF HeliosStringView HeliosReadEntireFile(HeliosAllocator allocator, HeliosStringView path) {
+    HeliosAllocator temp = HeliosGetTempAllocator();
+    char *path_cstr = HeliosStringViewCloneToCStr(temp, path);
+
+    DWORD share_mode = FILE_SHARE_READ;
+    SECURITY_ATTRIBUTES *attrs = NULL;
+    HANDLE file_handle = CreateFileA(path_cstr,
+                                     GENERIC_READ,
+                                     share_mode,
+                                     attrs,
+                                     OPEN_EXISTING,
+                                     FILE_ATTRIBUTE_NORMAL,
+                                     NULL);
+
+    if (file_handle == INVALID_HANDLE_VALUE) {
+        return (HeliosStringView) {.data = NULL, .count = 0};
+    }
+
+    DWORD high_bits = 0;
+    DWORD low_bits = GetFileSize(file_handle, &high_bits);
+    if (low_bits == INVALID_FILE_SIZE) {
+        return (HeliosStringView) {.data = NULL, .count = 0};
+    }
+
+    U64 file_size = ((U64) high_bits << 32) | (U64) low_bits;
+    void *buffer = HeliosAlloc(allocator, file_size);
+
+    DWORD n_read = 0;
+    BOOL ok = ReadFile(file_handle,
+                       buffer,
+                       file_size,
+                       &n_read,
+                       NULL);
+    if (!ok) {
+        HeliosFree(allocator, buffer, file_size);
+        return (HeliosStringView) {.data = NULL, .count = 0};
+    }
+
+    return (HeliosStringView) {.data = buffer, .count = n_read};
+}
+#endif // HELIOS_PLATFORM_WINDOWS
 
 #endif // HELIOS_IMPLEMENTATION
 

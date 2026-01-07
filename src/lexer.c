@@ -43,7 +43,7 @@ B32 AnanasLexerNext(AnanasLexer *lexer, HeliosAllocator allocator, AnanasToken *
 
     while (1) {
         if (!HeliosString8StreamNext(lexer->contents, &cur_char)) return 0;
-        if (cur_char == ' ' || cur_char == '\t') {
+        if (cur_char == ' ' || cur_char == '\t' || cur_char == '\r') {
             ++lexer->col;
             continue;
         } else if (cur_char == '\n') {

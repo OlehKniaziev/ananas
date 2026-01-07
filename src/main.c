@@ -6,6 +6,7 @@
 #include "son.h"
 #include "lir.h"
 #include "vm.h"
+#include "platform.h"
 
 static void AnanasEvalFile(AnanasArena *arena, HeliosStringView file_path) {
     HeliosAllocator allocator = AnanasArenaToHeliosAllocator(arena);
@@ -117,7 +118,7 @@ static void AnanasLIR_DumpBytecode(U8 *bcode, UZ bcount) {
         for (; pw < w; ++pw) {
             printf(" ");
         }
-        printf("%lu] %s ", i, op_name);
+        printf("%llu] %s ", i, op_name);
 
         switch (*op) {
         case AnanasLIR_Op_Const: {
@@ -285,6 +286,7 @@ int main(int argc, char **argv) {
         HELIOS_UNREACHABLE();
     }
 
+    HeliosAllocator malloc_allocator = HeliosNewMallocAllocator();
     HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(&arena);
 
     AnanasEnv env;
@@ -295,23 +297,21 @@ int main(int argc, char **argv) {
     AnanasReaderTableInit(&reader_table, arena_allocator);
 
     while (1) {
-        U8 backing_error_buffer[1024];
+        U8 backing_error_buffer[1024] = {0};
         HeliosStringView error_buffer = {.data = backing_error_buffer, .count = sizeof(backing_error_buffer)};
         AnanasErrorContext error_ctx = {.ok = 1, .place = HELIOS_SV_LIT("repl"), .error_buffer = error_buffer};
 
         printf("> ");
 
-        char *line = NULL;
-        UZ line_count = 0;
-        ssize_t res = getline(&line, &line_count, stdin);
+        HeliosStringView line = {0};
 
-        if (res == -1) {
+        if (!AnanasPlatformGetLine(malloc_allocator, &line)) {
             printf("\n");
             break;
         }
 
         HeliosString8Stream source;
-        HeliosString8StreamInit(&source, (U8 *)line, res);
+        HeliosString8StreamInit(&source, (U8 *)line.data, line.count);
 
         AnanasLexer lexer;
         AnanasLexerInit(&lexer, &source);

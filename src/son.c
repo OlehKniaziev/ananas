@@ -89,7 +89,7 @@ static const char *NodeName(AnanasSON_Node *node, HeliosAllocator allocator) {
 
     switch (node->kind) {
     case AnanasSON_NodeKind_Const: {
-#define FMT "%s %ld"
+#define FMT "%s %lld"
         U32 n = snprintf(NULL, 0, FMT, prefix, node->type.u.const_integer);
         U8 *buf = HeliosAlloc(allocator, n + 1);
         sprintf((char *)buf, FMT, prefix, node->type.u.const_integer);

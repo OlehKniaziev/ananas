@@ -3,9 +3,9 @@
 HeliosStringView AnanasPrint(HeliosAllocator allocator, AnanasValue node) {
     switch (node.type) {
     case AnanasValueType_Int: {
-        int required_bytes = snprintf(NULL, 0, "%ld", node.u.integer);
+        int required_bytes = snprintf(NULL, 0, "%lld", node.u.integer);
         U8 *buffer = HeliosAlloc(allocator, required_bytes + 1);
-        sprintf((char *)buffer, "%ld", node.u.integer);
+        sprintf((char *)buffer, "%lld", node.u.integer);
         return (HeliosStringView) {.data = buffer, .count = required_bytes};
     }
     case AnanasValueType_String: {

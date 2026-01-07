@@ -1,5 +1,6 @@
 #include "common.h"
 #include "astron.h"
+#include "platform.h"
 
 #include <stdarg.h>
 
@@ -7,7 +8,7 @@
 
 void AnanasArenaInit(AnanasArena *arena, UZ cap) {
     cap = AnanasAlignForward(cap, PAGE_SIZE);
-    arena->data = mmap(NULL, cap, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    arena->data = AnanasPlatformAllocPages(cap);
     arena->capacity = cap;
     arena->offset = 0;
 }
@@ -19,6 +20,7 @@ void *AnanasArenaPush(AnanasArena *arena, UZ count) {
     HELIOS_UNUSED(arena);
     return calloc(count, sizeof(U8));
 }
+
 static void ArenaFreeStub(void *arena, void *ptr, UZ count) {
     HELIOS_UNUSED(arena);
     HELIOS_UNUSED(count);
