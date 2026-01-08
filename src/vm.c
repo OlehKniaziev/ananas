@@ -127,7 +127,7 @@ DEFINE_NATIVE_LAMBDA(AnanasPrint) {
     AnanasVM_Value val = Pop(vm);
     if (IS_INT(val)) {
         S64 i = TO_INT(val);
-        printf("%lld\n", i);
+        printf(HELIOS_UZ_FMT "\n", i);
     } else {
         AnanasGC_Entity *e = TO_ENTITY(val);
         HELIOS_ASSERT(e->descriptor == STRING_DESCRIPTOR);

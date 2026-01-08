@@ -3,7 +3,7 @@
 
 #include "helios.h"
 
-B32 AnanasPlatformGetLine(HeliosAllocator, HeliosStringView *);
+B32 AnanasPlatformGetLine(HeliosAllocator, U8 **, UZ *);
 
 void *AnanasPlatformAllocPages(UZ);
 

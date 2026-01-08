@@ -100,10 +100,10 @@ extern "C" {
 #        define HELIOS_BITS_32
 #    endif // _WIN64
 #else
-#    if SIZE_MAX == UINT32_MAX
-#        define HELIOS_BITS_32
-#    elif SIZE_MAX == UINT64_MAX
+#    if SIZE_MAX == UINT64_MAX
 #        define HELIOS_BITS_64
+#    elif SIZE_MAX == UINT32_MAX
+#        define HELIOS_BITS_32
 #    else
 #        error "Could not determine architecture bit size"
 #    endif // word size check
@@ -148,7 +148,15 @@ typedef double F64;
 #elif defined(HELIOS_BITS_64)
     typedef uint64_t UZ;
     typedef int64_t  SZ;
-#endif // bit size check
+#endif // word size check
+
+#if ULONG_MAX == UINT32_MAX
+#    define HELIOS_UZ_FMT "%lld"
+#elif ULONG_MAX == UINT64_MAX
+#    define HELIOS_UZ_FMT "%ld"
+#else
+#    error "your 'long' size is crazy"
+#endif // long size check
 
 typedef struct HeliosAllocatorVTable {
     void *(*alloc)(void*, UZ);              // required
@@ -632,7 +640,7 @@ HELIOS_DEF void HeliosString8StreamRetreat(HeliosString8Stream *s) {
     s->last_char_size = -1;
 }
 
-#if HELIOS_PLATFORM_POSIX
+#ifdef HELIOS_PLATFORM_POSIX
 HELIOS_DEF HeliosStringView HeliosReadEntireFile(HeliosAllocator allocator, HeliosStringView path) {
     HeliosAllocator temp = HeliosGetTempAllocator();
     char *path_cstr = HeliosStringViewCloneToCStr(temp, path);

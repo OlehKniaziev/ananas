@@ -1,21 +1,19 @@
 #include "platform.h"
 
-B32 AnanasPlatformGetLine(HeliosAllocator allocator, HeliosStringView *sv) {
+B32 AnanasPlatformGetLine(HeliosAllocator allocator, U8 **out_buffer, UZ *out_count) {
     B32 result = 1;
-
-    memset(sv, 0, sizeof(*sv));
 
     char *temp_buffer = NULL;
 
-    SZ res = getline(&temp_buffer, &sv->count, stdin);
+    SZ res = getline(&temp_buffer, out_count, stdin);
     if (res == -1) {
         result = 0;
         goto defer;
     }
 
-    sv->count = (UZ) res;
-    sv->data = HeliosAlloc(allocator, res);
-    memcpy(sv->data, temp_buffer, res);
+    *out_count = res;
+    *out_buffer = HeliosAlloc(allocator, res);
+    memcpy(*out_buffer, temp_buffer, res);
 
 defer:
     free(temp_buffer);

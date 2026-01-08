@@ -4,7 +4,7 @@
 #include <windows.h>
 #include <Strsafe.h>
 
-B32 AnanasPlatformGetLine(HeliosAllocator allocator, HeliosStringView *sv) {
+B32 AnanasPlatformGetLine(HeliosAllocator allocator, U8 **out_buffer, UZ *out_count) {
     const UZ buffer_size = 1024;
     char *buffer = HeliosAlloc(allocator, buffer_size);
     HRESULT result = StringCchGetsA(buffer, buffer_size);
@@ -14,8 +14,8 @@ B32 AnanasPlatformGetLine(HeliosAllocator allocator, HeliosStringView *sv) {
         return 0;
     }
 
-    sv->data = (U8 *) buffer;
-    sv->count = strnlen(buffer, buffer_size);
+    *out_buffer = buffer;
+    *out_count = strnlen(buffer, buffer_size);
 
     return 1;
 }

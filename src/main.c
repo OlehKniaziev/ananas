@@ -118,7 +118,7 @@ static void AnanasLIR_DumpBytecode(U8 *bcode, UZ bcount) {
         for (; pw < w; ++pw) {
             printf(" ");
         }
-        printf("%llu] %s ", i, op_name);
+        printf(HELIOS_UZ_FMT "] %s ", i, op_name);
 
         switch (*op) {
         case AnanasLIR_Op_Const: {
@@ -303,12 +303,15 @@ int main(int argc, char **argv) {
 
         printf("> ");
 
-        HeliosStringView line = {0};
+        U8 *line_buffer = NULL;
+        UZ line_count = 0;
 
-        if (!AnanasPlatformGetLine(malloc_allocator, &line)) {
+        if (!AnanasPlatformGetLine(malloc_allocator, &line_buffer, &line_count)) {
             printf("\n");
             break;
         }
+
+        HeliosStringView line = {.data = line_buffer, .count = line_count};
 
         HeliosString8Stream source;
         HeliosString8StreamInit(&source, (U8 *)line.data, line.count);
