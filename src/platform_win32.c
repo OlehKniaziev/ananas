@@ -14,7 +14,7 @@ B32 AnanasPlatformGetLine(HeliosAllocator allocator, U8 **out_buffer, UZ *out_co
         return 0;
     }
 
-    *out_buffer = buffer;
+    *out_buffer = (U8 *)buffer;
     *out_count = strnlen(buffer, buffer_size);
 
     return 1;
