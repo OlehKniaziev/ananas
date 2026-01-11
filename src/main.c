@@ -8,9 +8,7 @@
 #include "vm.h"
 #include "platform.h"
 
-static void AnanasEvalFile(AnanasArena *arena, HeliosStringView file_path) {
-    HeliosAllocator allocator = AnanasArenaToHeliosAllocator(arena);
-
+static void AnanasEvalFile(HeliosAllocator allocator, HeliosStringView file_path) {
     HeliosStringView file_contents = HeliosReadEntireFile(allocator, file_path);
     if (file_contents.data == NULL) {
         fprintf(stderr, "Failed to read the file\n");
@@ -35,9 +33,9 @@ static void AnanasEvalFile(AnanasArena *arena, HeliosStringView file_path) {
     AnanasRootEnvPopulate(&env);
 
     AnanasValue node;
-    while (AnanasReaderNext(&lexer, &reader_table, arena, &node, &error_ctx)) {
+    while (AnanasReaderNext(&lexer, &reader_table, allocator, &node, &error_ctx)) {
         AnanasValue result;
-        if (!AnanasEval(node, arena, &env, &result, &error_ctx)) {
+        if (!AnanasEval(node, allocator, &env, &result, &error_ctx)) {
             fprintf(stderr, "Eval error: " HELIOS_SV_FMT "\n", HELIOS_SV_ARG(error_ctx.error_buffer));
             exit(1);
         }
@@ -77,7 +75,7 @@ void AnanasSON_CompileFile(AnanasArena *arena, HeliosStringView file_path) {
     AnanasSON_CompilerStateInit(&cstate, arena);
 
     AnanasValue value;
-    while (AnanasReaderNext(&lexer, &reader_table, arena, &value, &error_ctx)) {
+    while (AnanasReaderNext(&lexer, &reader_table, allocator, &value, &error_ctx)) {
         AnanasSON_Node *node = AnanasSON_Compile(&cstate, value);
         HELIOS_VERIFY(node != NULL);
     }
@@ -213,7 +211,7 @@ static void AnanasLIR_CompileFile(AnanasArena *arena,
     AnanasValueArray program;
     AnanasValueArrayInit(&program, allocator, 333);
     AnanasValue value;
-    while (AnanasReaderNext(&lexer, &reader_table, arena, &value, &error_ctx)) {
+    while (AnanasReaderNext(&lexer, &reader_table, allocator, &value, &error_ctx)) {
         AnanasValueArrayPush(&program, value);
     }
 
@@ -238,11 +236,13 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(&arena);
+
     if (argc >= 3) {
         const char *subcommand = argv[1];
         if (strcmp(subcommand, "run") == 0) {
             HeliosStringView file_path = HELIOS_SV_LIT(argv[2]);
-            AnanasEvalFile(&arena, file_path);
+            AnanasEvalFile(arena_allocator, file_path);
         } else if (strcmp(subcommand, "com") == 0) {
             HeliosStringView file_path = HELIOS_SV_LIT(argv[2]);
             AnanasLIR_CompiledModule module = {0};
@@ -287,7 +287,6 @@ int main(int argc, char **argv) {
     }
 
     HeliosAllocator malloc_allocator = HeliosNewMallocAllocator();
-    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(&arena);
 
     AnanasEnv env;
     AnanasEnvInit(&env, NULL, arena_allocator);
@@ -297,9 +296,9 @@ int main(int argc, char **argv) {
     AnanasReaderTableInit(&reader_table, arena_allocator);
 
     while (1) {
-        U8 backing_error_buffer[1024] = {0};
-        HeliosStringView error_buffer = {.data = backing_error_buffer, .count = sizeof(backing_error_buffer)};
-        AnanasErrorContext error_ctx = {.ok = 1, .place = HELIOS_SV_LIT("repl"), .error_buffer = error_buffer};
+        U8 error_buffer[1024] = {0};
+        AnanasErrorContext error_ctx = {0};
+        AnanasErrorContextInit(&error_ctx, error_buffer, sizeof(error_buffer));
 
         printf("> ");
 
@@ -320,7 +319,7 @@ int main(int argc, char **argv) {
         AnanasLexerInit(&lexer, &source);
 
         AnanasValue node;
-        if (!AnanasReaderNext(&lexer, &reader_table, &arena, &node, &error_ctx)) {
+        if (!AnanasReaderNext(&lexer, &reader_table, arena_allocator, &node, &error_ctx)) {
             if (!error_ctx.ok) {
                 printf("Reader error: " HELIOS_SV_FMT "\n", HELIOS_SV_ARG(error_ctx.error_buffer));
             }
@@ -329,7 +328,7 @@ int main(int argc, char **argv) {
         }
 
         AnanasValue result;
-        if (!AnanasEval(node, &arena, &env, &result, &error_ctx)) {
+        if (!AnanasEval(node, arena_allocator, &env, &result, &error_ctx)) {
             printf("Eval error: " HELIOS_SV_FMT "\n", HELIOS_SV_ARG(error_ctx.error_buffer));
             continue;
         }

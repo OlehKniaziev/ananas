@@ -43,12 +43,12 @@ struct AnanasList {
     struct AnanasList *cdr;
 };
 
-static inline AnanasList *AnanasListCopy(AnanasArena *arena, AnanasList *list) {
+static inline AnanasList *AnanasListCopy(HeliosAllocator arena, AnanasList *list) {
     AnanasList *out_list = NULL;
     AnanasList *current_out_list = out_list;
 
     while (list != NULL) {
-        AnanasList *l = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+        AnanasList *l = HeliosAlloc(arena, sizeof(*l));
 
         if (list->car.type == AnanasValueType_List) {
             AnanasList *list_to_copy = list->car.u.list;
@@ -86,7 +86,7 @@ B32 AnanasParseParamsFromList(HeliosAllocator,
                               AnanasErrorContext *);
 
 B32 AnanasUnquoteForm(AnanasList *,
-                      AnanasArena *,
+                      HeliosAllocator,
                       struct AnanasEnv *,
                       AnanasErrorContext *);
 
@@ -104,7 +104,7 @@ ERMIS_DECL_ARRAY(AnanasValue, AnanasValueArray)
 
 #define ANANAS_DECLARE_NATIVE_FUNCTION(name) B32 name(AnanasArgs args, \
     AnanasToken where, \
-    AnanasArena *arena, \
+    HeliosAllocator arena, \
     AnanasErrorContext *error_ctx, \
     AnanasValue *result)
 #define ANANAS_DEFINE_NATIVE_FUNCTION ANANAS_DECLARE_NATIVE_FUNCTION
@@ -150,7 +150,7 @@ ERMIS_DECL_ARRAY(AnanasValue, AnanasValueArray)
 
 typedef B32 (*AnanasNativeFunction)(AnanasArgs args,
                                     AnanasToken where,
-                                    AnanasArena *arena,
+                                    HeliosAllocator allocator,
                                     AnanasErrorContext *error_ctx,
                                     AnanasValue *result);
 

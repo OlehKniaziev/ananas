@@ -66,10 +66,10 @@ B32 AnanasParseParamsFromList(HeliosAllocator arena_allocator,
     return 1;
 }
 
-B32 AnanasEval(AnanasValue, AnanasArena *, struct AnanasEnv *, AnanasValue *, AnanasErrorContext *);
+B32 AnanasEval(AnanasValue, HeliosAllocator, struct AnanasEnv *, AnanasValue *, AnanasErrorContext *);
 
 B32 AnanasUnquoteForm(AnanasList *args,
-                      AnanasArena *arena,
+                      HeliosAllocator arena,
                       struct AnanasEnv *env,
                       AnanasErrorContext *error_ctx) {
     while (args != NULL) {
@@ -141,4 +141,3 @@ B32 AnanasUnquoteForm(AnanasList *args,
 
     return 1;
 }
-

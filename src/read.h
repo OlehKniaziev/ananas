@@ -13,8 +13,8 @@ void AnanasReaderTableInit(AnanasReaderTable *, HeliosAllocator);
 
 B32 AnanasReaderNext(AnanasLexer *lexer,
                      AnanasReaderTable *table,
-                     AnanasArena *arena,
-                     AnanasValue *node,
+                     HeliosAllocator allocator,
+                     AnanasValue *value,
                      AnanasErrorContext *error_ctx);
 
 #endif // ANANAS_READER_H_

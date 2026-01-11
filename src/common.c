@@ -37,7 +37,7 @@ void *AnanasArenaPush(AnanasArena *arena, UZ count) {
 
     void *ptr = arena->data + arena->offset;
     arena->offset += count;
-    return ptr;
+    return memset(ptr, 0, count);
 }
 
 static void ArenaFreeStub(void *arena, void *ptr, UZ count) {

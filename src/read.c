@@ -19,11 +19,11 @@ ANANAS_ENUM_READER_MACROS
 ANANAS_DECLARE_NATIVE_MACRO(AnanasQuoteMacro) {
     ANANAS_CHECK_ARGS_COUNT(1);
 
-    AnanasList *results_list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+    AnanasList *results_list = HeliosAlloc(arena, sizeof(*results_list));
     results_list->car.type = AnanasValueType_Symbol;
     results_list->car.u.symbol = HELIOS_SV_LIT("quote");
 
-    results_list->cdr = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+    results_list->cdr = HeliosAlloc(arena, sizeof(*results_list->cdr));
     results_list->cdr->car = AnanasArgAt(args, 0);
 
     result->type = AnanasValueType_List;
@@ -34,11 +34,11 @@ ANANAS_DECLARE_NATIVE_MACRO(AnanasQuoteMacro) {
 ANANAS_DECLARE_NATIVE_MACRO(AnanasUnquoteMacro) {
     ANANAS_CHECK_ARGS_COUNT(1);
 
-    AnanasList *results_list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+    AnanasList *results_list = HeliosAlloc(arena, sizeof(*results_list));
     results_list->car.type = AnanasValueType_Symbol;
     results_list->car.u.symbol = HELIOS_SV_LIT("unquote");
 
-    results_list->cdr = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+    results_list->cdr = HeliosAlloc(arena, sizeof(*results_list->cdr));
     results_list->cdr->car = AnanasArgAt(args, 0);
 
     result->type = AnanasValueType_List;
@@ -49,11 +49,11 @@ ANANAS_DECLARE_NATIVE_MACRO(AnanasUnquoteMacro) {
 ANANAS_DECLARE_NATIVE_MACRO(AnanasUnquoteSpliceMacro) {
     ANANAS_CHECK_ARGS_COUNT(1);
 
-    AnanasList *results_list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+    AnanasList *results_list = HeliosAlloc(arena, sizeof(*results_list));
     results_list->car.type = AnanasValueType_Symbol;
     results_list->car.u.symbol = HELIOS_SV_LIT("unquote-splice");
 
-    results_list->cdr = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+    results_list->cdr = HeliosAlloc(arena, sizeof(*results_list->cdr));
     results_list->cdr->car = AnanasArgAt(args, 0);
 
     result->type = AnanasValueType_List;
@@ -78,15 +78,11 @@ ANANAS_ENUM_READER_MACROS
 
 B32 AnanasReaderNext(AnanasLexer *lexer,
                      AnanasReaderTable *table,
-                     AnanasArena *arena,
+                     HeliosAllocator allocator,
                      AnanasValue *result,
                      AnanasErrorContext *error_ctx) {
-    // FIXME(oleh): Probably move this up the call stack, and pass the `HeliosAllocator` parameter
-    // instead of the arena one.
-    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
-
     AnanasToken token;
-    if (!AnanasLexerNext(lexer, arena_allocator, &token)) return 0;
+    if (!AnanasLexerNext(lexer, allocator, &token)) return 0;
 
     switch (token.type) {
     case AnanasTokenType_Int: {
@@ -115,7 +111,7 @@ B32 AnanasReaderNext(AnanasLexer *lexer,
         while (1) {
             AnanasLexer prev_lexer = *lexer;
             HeliosString8Stream prev_contents = *lexer->contents;
-            if (!AnanasLexerNext(lexer, arena_allocator, &token)) {
+            if (!AnanasLexerNext(lexer, allocator, &token)) {
                 AnanasErrorContextMessage(error_ctx, token.row, token.col + token.value.count, "EOF while expecting ')'");
                 return 0;
             }
@@ -127,8 +123,8 @@ B32 AnanasReaderNext(AnanasLexer *lexer,
             *lexer = prev_lexer;
             *lexer->contents = prev_contents;
 
-            AnanasList *list_car = ANANAS_ARENA_PUSH_ZERO(arena, sizeof(AnanasList));
-            if (!AnanasReaderNext(lexer, table, arena, &list_car->car, error_ctx)) {
+            AnanasList *list_car = HeliosAlloc(allocator, sizeof(*list_car));
+            if (!AnanasReaderNext(lexer, table, allocator, &list_car->car, error_ctx)) {
                 HELIOS_ASSERT(!error_ctx->ok);
                 return 0;
             }
@@ -159,14 +155,14 @@ B32 AnanasReaderNext(AnanasLexer *lexer,
             return 0;
         }
 
-        AnanasList *macro_arg = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+        AnanasList *macro_arg = HeliosAlloc(allocator, sizeof(*macro_arg));
 
-        if (!AnanasReaderNext(lexer, table, arena, &macro_arg->car, error_ctx)) return 0;
+        if (!AnanasReaderNext(lexer, table, allocator, &macro_arg->car, error_ctx)) return 0;
 
         return AnanasEvalMacroWithArgumentList(reader_macro,
                                                token,
                                                macro_arg,
-                                               arena,
+                                               allocator,
                                                error_ctx,
                                                result);
     }

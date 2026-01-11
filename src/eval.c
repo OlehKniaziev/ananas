@@ -77,14 +77,14 @@ static B32 AnanasConvertToBool(AnanasValue node) {
 }
 
 static B32 AnanasEvalFormList(AnanasList *form_list,
-                              AnanasArena *arena,
+                              HeliosAllocator allocator,
                               AnanasEnv *env,
                               AnanasErrorContext *error_ctx,
                               AnanasValue *result) {
     HELIOS_VERIFY(form_list != NULL);
 
     while (form_list != NULL) {
-        if (!AnanasEval(form_list->car, arena, env, result, error_ctx)) return 0;
+        if (!AnanasEval(form_list->car, allocator, env, result, error_ctx)) return 0;
         form_list = form_list->cdr;
     }
 
@@ -94,19 +94,17 @@ static B32 AnanasEvalFormList(AnanasList *form_list,
 static B32 AnanasEvalFunctionWithArgumentList(AnanasFunction *function,
                                               AnanasList *args_list,
                                               AnanasToken where,
-                                              AnanasArena *arena,
+                                              HeliosAllocator allocator,
                                               AnanasEnv *env,
                                               AnanasErrorContext *error_ctx,
                                               AnanasValue *result) {
-    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
-
     if (function->is_native) {
         AnanasValueArray args_array;
-        AnanasValueArrayInit(&args_array, arena_allocator, 10);
+        AnanasValueArrayInit(&args_array, allocator, 10);
 
         while (args_list != NULL) {
             AnanasValue arg_value;
-            if (!AnanasEval(args_list->car, arena, env, &arg_value, error_ctx)) return 0;
+            if (!AnanasEval(args_list->car, allocator, env, &arg_value, error_ctx)) return 0;
 
             AnanasValueArrayPush(&args_array, arg_value);
 
@@ -119,13 +117,13 @@ static B32 AnanasEvalFunctionWithArgumentList(AnanasFunction *function,
         };
 
         AnanasNativeFunction native_function = function->u.native;
-        return native_function(call_args, where, arena, error_ctx, result);
+        return native_function(call_args, where, allocator, error_ctx, result);
     }
 
     AnanasUserFunction user_function = function->u.user;
 
     AnanasEnv call_env;
-    AnanasEnvInit(&call_env, user_function.enclosing_env, arena_allocator);
+    AnanasEnvInit(&call_env, user_function.enclosing_env, allocator);
 
     if (user_function.params.variable) {
         HELIOS_ASSERT(user_function.params.count >= 1);
@@ -138,7 +136,7 @@ static B32 AnanasEvalFunctionWithArgumentList(AnanasFunction *function,
 
             HeliosStringView param_name = user_function.params.names[args_count];
             AnanasValue param_value;
-            if (!AnanasEval(args_list->car, arena, env, &param_value, error_ctx)) return 0;
+            if (!AnanasEval(args_list->car, allocator, env, &param_value, error_ctx)) return 0;
             AnanasEnvMapInsert(&call_env.map, param_name, param_value);
 
             ++args_count;
@@ -162,9 +160,9 @@ static B32 AnanasEvalFunctionWithArgumentList(AnanasFunction *function,
 
         while (args_list != NULL) {
             AnanasValue param_value;
-            if (!AnanasEval(args_list->car, arena, env, &param_value, error_ctx)) return 0;
+            if (!AnanasEval(args_list->car, allocator, env, &param_value, error_ctx)) return 0;
 
-            AnanasList *list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+            AnanasList *list = HeliosAlloc(allocator, sizeof(*list));
             list->car = param_value;
 
             if (rest_list == NULL) {
@@ -196,7 +194,7 @@ static B32 AnanasEvalFunctionWithArgumentList(AnanasFunction *function,
             }
 
             AnanasValue param_value;
-            if (!AnanasEval(args_list->car, arena, env, &param_value, error_ctx)) return 0;
+            if (!AnanasEval(args_list->car, allocator, env, &param_value, error_ctx)) return 0;
 
             HeliosStringView param_name = user_function.params.names[arguments_count];
             AnanasEnvMapInsert(&call_env.map, param_name, param_value);
@@ -218,7 +216,7 @@ static B32 AnanasEvalFunctionWithArgumentList(AnanasFunction *function,
 
     AnanasList *function_body = user_function.body;
     return AnanasEvalFormList(function_body,
-                              arena,
+                              allocator,
                               &call_env,
                               error_ctx,
                               result);
@@ -227,16 +225,14 @@ static B32 AnanasEvalFunctionWithArgumentList(AnanasFunction *function,
 B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
                                     AnanasToken where,
                                     AnanasList *args_list,
-                                    AnanasArena *arena,
+                                    HeliosAllocator allocator,
                                     AnanasErrorContext *error_ctx,
                                     AnanasValue *result) {
-    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
-
     if (macro->is_native) {
         AnanasNativeMacro native_macro = macro->u.native;
 
         AnanasValueArray args_array;
-        AnanasValueArrayInit(&args_array, arena_allocator, 10);
+        AnanasValueArrayInit(&args_array, allocator, 10);
 
         while (args_list != NULL) {
             AnanasValue arg = args_list->car;
@@ -246,13 +242,13 @@ B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
 
         AnanasArgs call_args = {.values = args_array.items, .count = args_array.count};
 
-        return native_macro(call_args, where, arena, error_ctx, result);
+        return native_macro(call_args, where, allocator, error_ctx, result);
     }
 
     AnanasUserMacro user_macro = macro->u.user;
 
     AnanasEnv call_env;
-    AnanasEnvInit(&call_env, user_macro.enclosing_env, arena_allocator);
+    AnanasEnvInit(&call_env, user_macro.enclosing_env, allocator);
 
     if (user_macro.params.variable) {
         HELIOS_ASSERT(user_macro.params.count >= 1);
@@ -317,7 +313,7 @@ B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
     }
 
     return AnanasEvalFormList(user_macro.body,
-                              arena,
+                              allocator,
                               &call_env,
                               error_ctx,
                               result);
@@ -340,7 +336,7 @@ ANANAS_DEFINE_NATIVE_FUNCTION(AnanasCons) {
 
     ANANAS_CHECK_ARG_TYPE(1, List, cdr);
 
-    AnanasList *list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+    AnanasList *list = HeliosAlloc(arena, sizeof(*list));
     list->car = args.values[0];
     list->cdr = cdr_arg.u.list;
 
@@ -358,7 +354,7 @@ ANANAS_DEFINE_NATIVE_FUNCTION(AnanasListProc) {
     AnanasList *current_list = result_list;
 
     for (UZ i = 0; i < args.count; ++i) {
-        AnanasList *list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+        AnanasList *list = HeliosAlloc(arena, sizeof(*list));
         list->car = args.values[i];
         if (result_list == NULL) {
             result_list = list;
@@ -409,10 +405,8 @@ ANANAS_DEFINE_NATIVE_FUNCTION(AnanasReadFile) {
 
     ANANAS_CHECK_ARG_TYPE(0, String, file_name);
 
-    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
-
     HeliosStringView file_name = file_name_arg.u.string;
-    HeliosStringView file_contents = HeliosReadEntireFile(arena_allocator, file_name);
+    HeliosStringView file_contents = HeliosReadEntireFile(arena, file_name);
     if (file_contents.data == NULL) {
         *result = ANANAS_FALSE;
         return 1;
@@ -445,7 +439,7 @@ ANANAS_DEFINE_NATIVE_FUNCTION(AnanasStringSplit) {
 
         HeliosStringView string_part = {.data = &string.data[substring_start], .count = i - substring_start};
 
-        AnanasList *list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+        AnanasList *list = HeliosAlloc(arena, sizeof(*list));
         list->car.type = AnanasValueType_String;
         list->car.u.string = string_part;
 
@@ -463,7 +457,7 @@ ANANAS_DEFINE_NATIVE_FUNCTION(AnanasStringSplit) {
 
     HeliosStringView last_string_part = {.data = &string.data[substring_start], .count = string.count - substring_start};
 
-    AnanasList *list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+    AnanasList *list = HeliosAlloc(arena, sizeof(*list));
     list->car.type = AnanasValueType_String;
     list->car.u.string = last_string_part;
 
@@ -483,9 +477,9 @@ ANANAS_DEFINE_NATIVE_FUNCTION(AnanasConcat) {
         ANANAS_NATIVE_BAIL("no arguments passed to 'concat'");
     }
 
-    U8 *buf = arena->data + arena->offset;
+    AnanasDString buf = {0};
+    AnanasDStringInit(&buf, arena, 1024);
 
-    UZ buf_offset = 0;
     for (UZ i = 0; i < args.count; ++i) {
         AnanasValue arg = AnanasArgAt(args, i);
         if (arg.type != AnanasValueType_String) {
@@ -498,17 +492,14 @@ ANANAS_DEFINE_NATIVE_FUNCTION(AnanasConcat) {
         }
 
         HeliosStringView sym = arg.u.string;
-        memcpy(&buf[buf_offset], sym.data, sym.count);
-        arena->offset += sym.count;
-        HELIOS_VERIFY(arena->capacity > arena->offset);
-        buf_offset += sym.count;
+        for (UZ j = 0; j < sym.count; ++j) {
+            AnanasDStringPush(&buf, sym.data[j]);
+        }
     }
 
-    arena->offset = AnanasAlignForward(arena->offset, sizeof(void *));
-
     result->type = AnanasValueType_String;
-    result->u.symbol.data = buf;
-    result->u.symbol.count = buf_offset;
+    result->u.symbol.data = buf.items;
+    result->u.symbol.count = buf.count;
     return 1;
 }
 
@@ -517,9 +508,9 @@ ANANAS_DEFINE_NATIVE_FUNCTION(AnanasConcatSyms) {
         ANANAS_NATIVE_BAIL("no arguments passed to 'concat-syms'");
     }
 
-    U8 *buf = arena->data + arena->offset;
+    AnanasDString buf = {0};
+    AnanasDStringInit(&buf, arena, 1024);
 
-    UZ buf_offset = 0;
     for (UZ i = 0; i < args.count; ++i) {
         AnanasValue arg = AnanasArgAt(args, i);
         if (arg.type != AnanasValueType_Symbol) {
@@ -532,17 +523,14 @@ ANANAS_DEFINE_NATIVE_FUNCTION(AnanasConcatSyms) {
         }
 
         HeliosStringView sym = arg.u.symbol;
-        memcpy(&buf[buf_offset], sym.data, sym.count);
-        arena->offset += sym.count;
-        HELIOS_VERIFY(arena->capacity > arena->offset);
-        buf_offset += sym.count;
+        for (UZ j = 0; j < sym.count; ++j) {
+            AnanasDStringPush(&buf, sym.data[j]);
+        }
     }
 
-    arena->offset = AnanasAlignForward(arena->offset, sizeof(void *));
-
     result->type = AnanasValueType_Symbol;
-    result->u.symbol.data = buf;
-    result->u.symbol.count = buf_offset;
+    result->u.symbol.data = buf.items;
+    result->u.symbol.count = buf.count;
     return 1;
 }
 
@@ -592,8 +580,7 @@ ANANAS_DECLARE_NATIVE_FUNCTION(AnanasPrintBuiltin) {
 
     AnanasValue value = AnanasArgAt(args, 0);
 
-    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
-    HeliosStringView string = AnanasPrint(arena_allocator, value);
+    HeliosStringView string = AnanasPrint(arena, value);
     printf(HELIOS_SV_FMT "\n", HELIOS_SV_ARG(string));
     ANANAS_NATIVE_RETURN(value);
 }
@@ -623,17 +610,15 @@ ANANAS_DECLARE_NATIVE_FUNCTION(AnanasRead) {
     AnanasLexer lexer;
     AnanasLexerInit(&lexer, &source_stream);
 
-    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
-
     AnanasReaderTable reader_table;
-    AnanasReaderTableInit(&reader_table, arena_allocator);
+    AnanasReaderTableInit(&reader_table, arena);
 
     AnanasList *result_list = NULL;
     AnanasList *current_list = result_list;
 
     AnanasValue read_result;
     while (AnanasReaderNext(&lexer, &reader_table, arena, &read_result, error_ctx)) {
-        AnanasList *list = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList);
+        AnanasList *list = HeliosAlloc(arena, sizeof(*list));
         list->car = read_result;
 
         if (result_list == NULL) {
@@ -782,8 +767,7 @@ ANANAS_DECLARE_NATIVE_FUNCTION(AnanasToString) {
         ANANAS_NATIVE_RETURN(arg);
     }
 
-    HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
-    HeliosStringView s = AnanasPrint(arena_allocator, arg);
+    HeliosStringView s = AnanasPrint(arena, arg);
     result->type = AnanasValueType_String;
     result->u.string = s;
     return 1;
@@ -800,7 +784,7 @@ ANANAS_DECLARE_NATIVE_FUNCTION(AnanasError) {
     ANANAS_NATIVE_BAIL_FMT(HELIOS_SV_FMT, HELIOS_SV_ARG(msg));
 }
 
-B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue *result, AnanasErrorContext *error_ctx) {
+B32 AnanasEval(AnanasValue node, HeliosAllocator arena, AnanasEnv *env, AnanasValue *result, AnanasErrorContext *error_ctx) {
     switch (node.type) {
     case AnanasValueType_Macro:
     case AnanasValueType_Function:
@@ -856,8 +840,6 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
                                                       error_ctx,
                                                       result);
         }
-
-        HeliosAllocator allocator = AnanasArenaToHeliosAllocator(arena);
 
         HeliosStringView sym_name = list->car.u.symbol;
         if (HeliosStringViewEqualCStr(sym_name, "var")) {
@@ -985,7 +967,7 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
             }
 
             AnanasParams lambda_params;
-            if (!AnanasParseParamsFromList(allocator, lambda_params_list, &lambda_params, error_ctx)) return 0;
+            if (!AnanasParseParamsFromList(arena, lambda_params_list, &lambda_params, error_ctx)) return 0;
 
             AnanasUserFunction lambda = {
                 .params = lambda_params,
@@ -993,7 +975,7 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
                 .enclosing_env = env,
             };
 
-            AnanasFunction *function = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasFunction);
+            AnanasFunction *function = HeliosAlloc(arena, sizeof(*function));
             function->is_native = 0;
             function->u.user = lambda;
 
@@ -1079,10 +1061,8 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
                 return 0;
             }
 
-            HeliosAllocator arena_allocator = AnanasArenaToHeliosAllocator(arena);
-
             AnanasEnv let_env;
-            AnanasEnvInit(&let_env, env, arena_allocator);
+            AnanasEnvInit(&let_env, env, arena);
             AnanasList *bindings_list = bindings_value.u.list;
 
             while (bindings_list != NULL) {
@@ -1210,7 +1190,7 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
 
             AnanasList *macro_params_list = macro_args_node.u.list;
             AnanasParams macro_params;
-            if (!AnanasParseParamsFromList(allocator, macro_params_list, &macro_params, error_ctx)) return 0;
+            if (!AnanasParseParamsFromList(arena, macro_params_list, &macro_params, error_ctx)) return 0;
 
             AnanasList *macro_body = args_list->cdr;
 
@@ -1219,7 +1199,7 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
                 .enclosing_env = env,
                 .params = macro_params,
             };
-            AnanasMacro *macro = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasMacro);
+            AnanasMacro *macro = HeliosAlloc(arena, sizeof(*macro));
             macro->is_native = 0;
             macro->u.user = user_macro;
 
@@ -1314,7 +1294,7 @@ B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue
             apply_args = apply_args->cdr;
 
 #define APPEND(val) do { \
-    AnanasList *car = ANANAS_ARENA_STRUCT_ZERO(arena, AnanasList); \
+            AnanasList *car = HeliosAlloc(arena, sizeof(*car)); \
     car->car = (val); \
     if (args_list == NULL) { \
         args_list = (car); \

@@ -17,10 +17,10 @@ void AnanasRootEnvPopulate(AnanasEnv *env);
 B32 AnanasEvalMacroWithArgumentList(AnanasMacro *macro,
                                     AnanasToken where,
                                     AnanasList *args_list,
-                                    AnanasArena *arena,
+                                    HeliosAllocator allocator,
                                     AnanasErrorContext *error_ctx,
                                     AnanasValue *result);
 
-B32 AnanasEval(AnanasValue node, AnanasArena *arena, AnanasEnv *env, AnanasValue *result, AnanasErrorContext *error_ctx);
+B32 AnanasEval(AnanasValue node, HeliosAllocator allocator, AnanasEnv *env, AnanasValue *result, AnanasErrorContext *error_ctx);
 
 #endif // ANANAS_EVAL_H_
