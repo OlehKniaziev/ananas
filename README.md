@@ -1,5 +1,6 @@
 # Ananas
-Ananas is an implementation of a custom lisp dialect. **NOTE**: the project is unfinished,
+Ananas is an implementation of a custom lisp dialect.
+This is a second iteration of my previous project [kokos](github.com/OlehKniaziev/kokos). **NOTE**: the project is unfinished,
 so expect bugs, inconveneinces, and lack of features.
 
 ## Quick start
