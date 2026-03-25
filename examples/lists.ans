@@ -1,0 +1,5 @@
+(let ((fruits (list "orange" "apple" "banana")))
+  (print fruits)
+  (print (car fruits))
+  (print (cdr fruits))
+  (print (cons "grape" fruits)))
